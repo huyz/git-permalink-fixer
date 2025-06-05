@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 GitHub Permalink Persistence Checker
+====================================
 
 Finds GitHub commit permalinks in a repository, checks if commits are merged
 into main, and for unmerged commits, tries to find the closest ancestor in main.
@@ -8,15 +9,32 @@ For unmerged commits, it prompts the user to either tag the commit to preserve
 the permalink or replace the permalink with a new one pointing to the ancestor
 commit.
 
-This is to avoid git garbage collection from breaking permalinks.
+The goal is to avoid git's garbage collection from nuking commits that it thinks
+are no longer referenced.
 
-Usage: python get_permalink_checker.py [--dry-run] [--main-branch BRANCH] [--tag-prefix PREFIX] [--auto-tag]
+Usage
+-----
+
+python git_permalink_checker.py [--dry-run] [--main-branch BRANCH] [--tag-prefix PREFIX] [--auto-tag]
+
+Arguments:
+- `--dry-run`: Show what would be done without making changes.
+- `--main-branch BRANCH`: Specify the main branch name (default: `main`).
+- `--tag-prefix PREFIX`: Specify the tag prefix, preferably namespaced with slash (default: `permalinks/ref`).
+- `--auto-tag`: Automatically tag all unmerged commits without prompting.
+
+
+Supported
+---------
 
 Supports the following cloud git repos:
 
-- github.com
+- github.com with links of the form:
+    - `https://github.com/org/project/blob/commit_hash/file_path#Lline_start-Lline_end`
+    - `https://github.com/org/project/tree/commit_hash`
 
-History:
+History
+-------
 
 - 2025-06-01 Authored by huyz and Claude Sonnet 4
 """
@@ -45,7 +63,7 @@ class SmartPermalinkTagger:
     def __init__(
         self,
         main_branch: str = "main",
-        tag_prefix: str = "permalink-ref",
+        tag_prefix: str = "permalinks/ref",
         dry_run: bool = False,
         auto_tag: bool = False,
     ):
@@ -67,8 +85,8 @@ class SmartPermalinkTagger:
                 check=True,
             )
             return Path(result.stdout.strip())
-        except subprocess.CalledProcessError:
-            raise RuntimeError("Not in a git repository")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Not in a git repository: {e}")
 
     def _get_remote_url(self) -> str:
         """Get the origin remote URL."""
@@ -80,27 +98,35 @@ class SmartPermalinkTagger:
                 capture_output=True,
                 text=True,
                 check=True,
-            ).stdout.strip()
+            )
+
+            remote_url = result.stdout.strip()
+            if not remote_url:
+                raise RuntimeError("Empty remote URL returned")
 
             # We sometimes use the `insteadOf` directive to map to domains
             # that .ssh/config can recognize.  In those cases, we want to use
             # the simpler way to extract the URL
-            if not GIT_RE.match(result):
+            if not GIT_RE.match(remote_url):
                 result = subprocess.run(
                     ["git", "config", "--get", "remote.origin.url"],
                     capture_output=True,
                     text=True,
                     check=True,
-                ).stdout.strip()
-
-            if not GIT_RE.match(result):
-                raise RuntimeError(
-                    f"Remote URL does not match GitHub format: {result}"
                 )
 
-            return result
-        except subprocess.CalledProcessError:
-            raise RuntimeError("No origin remote found")
+                remote_url = result.stdout.strip()
+                if not remote_url:
+                    raise RuntimeError("Empty remote URL returned from git config")
+
+            if not GIT_RE.match(remote_url):
+                raise RuntimeError(
+                    f"Remote URL does not match GitHub format: {remote_url}"
+                )
+
+            return remote_url
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"No origin remote found: {e}")
 
     def _get_github_info(self) -> Tuple[str, str]:
         """Extract owner/repo from GitHub URL."""
@@ -112,11 +138,20 @@ class SmartPermalinkTagger:
         for pattern in patterns:
             match = re.search(pattern, self.remote_url)
             if match:
-                return (match.group(1), match.group(2).rstrip(".git"))
+                owner = match.group(1)
+                repo = match.group(2).rstrip(".git")
+                if owner and repo:  # Ensure non-empty matches
+                    return (owner, repo)
 
         raise RuntimeError(
             f"Could not parse GitHub info from remote URL: {self.remote_url}"
         )
+
+    def _normalize_repo_name(self, repo_name: str) -> str:
+        """Normalize repository name by removing common prefixes."""
+        if not repo_name:
+            return repo_name
+        return re.sub(r'^(?:platform-|risk-|rails-)', '', repo_name.lower())
 
     def _parse_github_permalink(self, url: str) -> Optional[PermalinkInfo]:
         """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers."""
@@ -132,11 +167,15 @@ class SmartPermalinkTagger:
 
         owner, repo, commit_hash, file_path, line_start, line_end = match.groups()
 
+        # Validate commit hash length
+        if len(commit_hash) < 7 or len(commit_hash) > 40:
+            return None
+
         # Only process URLs from the current repository
         # Repo aliases
         if (
             owner.lower() != self.github_owner.lower()
-            or repo.lower().replace(r'^(?:platform-|risk-|rails-)?', '') != self.github_repo.lower().replace(r'^(?:platform-|risk-|rails-)?', '')
+            or self._normalize_repo_name(repo) != self._normalize_repo_name(self.github_repo)
         ):
             return None
 
@@ -156,7 +195,7 @@ class SmartPermalinkTagger:
 
         # File extensions (of text files) to search
         # TIP: `git ls-files | grep -o "\.\w\+" | sort -u`
-        extensions = {
+        text_extensions = {
             ".bash",
             ".bat",
             ".c",
@@ -208,7 +247,7 @@ class SmartPermalinkTagger:
                 continue
 
             # Only search in text files by running `file` command
-            # 2025-06-04 This is too slow, which is why we rely on extensions as heuristics.
+            # 2025-06-04 This is too slow, which is why we rely on text_extensions as heuristics.
             #try:
             #    result = subprocess.run(
             #        ["file", "--mime-type", "-b", str(file_path)],
@@ -222,11 +261,13 @@ class SmartPermalinkTagger:
             #    print(f"Warning: Could not determine file type for {file_path}")
             #    continue
 
-            # Only search in text files or in common git repo filenames with no extension‘
-            if file_path.suffix.lower() not in extensions or \
-                    (file_path.suffix == "" and file_path.name in \
-                        {"Makefile", "README", "LICENSE", "CHANGELOG", "CONTRIBUTING", "AUTHORS", "INSTALL"}):
-                continue
+            # Only search in text files or in common git repo filenames with no extension'
+            if file_path.suffix == "":
+                if file_path.name not in {"README", "LICENSE", "CHANGELOG", "CONTRIBUTING", "AUTHORS", "INSTALL", "Makefile", "Dockerfile"}:
+                    continue
+            else:
+                if file_path.suffix.lower() not in text_extensions:
+                    continue
 
             try:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -262,7 +303,7 @@ class SmartPermalinkTagger:
                                 f"    {found_count:2d}. 📍 Found permalink: {p_info.commit_hash[:8]}"
                             )
 
-            except (UnicodeDecodeError, IOError) as e:
+            except (UnicodeDecodeError, IOError, OSError, PermissionError) as e:
                 print(f"Warning: Could not read {file_path}: {e}")
                 continue
 
@@ -271,22 +312,24 @@ class SmartPermalinkTagger:
     def is_commit_in_main(self, commit_hash: str) -> bool:
         """Check if a commit is reachable from the main branch."""
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "merge-base", "--is-ancestor", commit_hash, self.main_branch],
                 capture_output=True,
-                check=True,
+                text=True,
             )
-            return True
+            return result.returncode == 0
         except subprocess.CalledProcessError:
             return False
 
     def commit_exists(self, commit_hash: str) -> bool:
         """Check if a commit exists in the repository."""
         try:
-            subprocess.run(
-                ["git", "cat-file", "-e", commit_hash], capture_output=True, check=True
+            result = subprocess.run(
+                ["git", "cat-file", "-e", commit_hash],
+                capture_output=True,
+                text=True,
             )
-            return True
+            return result.returncode == 0
         except subprocess.CalledProcessError:
             return False
 
@@ -306,7 +349,15 @@ class SmartPermalinkTagger:
                 text=True,
                 check=True,
             )
-            parts = result.stdout.strip().split("|", 3)
+
+            output = result.stdout.strip()
+            if not output:
+                return None
+
+            parts = output.split("|", 3)
+            if len(parts) != 4:
+                return None
+
             return {
                 "hash": parts[0],
                 "subject": parts[1],
@@ -325,19 +376,20 @@ class SmartPermalinkTagger:
                 text=True,
                 check=True,
             )
-            return result.stdout.strip()
+            ancestor = result.stdout.strip()
+            return ancestor if ancestor else None
         except subprocess.CalledProcessError:
             return None
 
     def file_exists_at_commit(self, commit_hash: str, file_path: str) -> bool:
         """Check if a file exists at a specific commit."""
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "cat-file", "-e", f"{commit_hash}:{file_path}"],
                 capture_output=True,
                 check=True,
             )
-            return True
+            return result.returncode == 0
         except subprocess.CalledProcessError:
             return False
 
@@ -360,10 +412,14 @@ class SmartPermalinkTagger:
         self, original: PermalinkInfo, new_commit_hash: str
     ) -> str:
         """Create a replacement permalink URL."""
-        base_url = f"https://github.com/{self.github_owner}/{self.github_repo}/blob/{new_commit_hash}"
+        # Determine if original URL used 'blob' or 'tree'
+        match = re.search(r"github\.com/[^/]+/[^/]+/(blob|tree)/", original.url)
+        url_type = match.group(1) if match else "blob"
+        base_url = f"https://github.com/{self.github_owner}/{self.github_repo}/{url_type}/{new_commit_hash}"
 
         if original.file_path:
             url = f"{base_url}/{original.file_path}"
+            # NOTE: Line numbers only make sense for blobs
             if original.line_start:
                 if original.line_end and original.line_end != original.line_start:
                     url += f"#L{original.line_start}-L{original.line_end}"
@@ -371,7 +427,7 @@ class SmartPermalinkTagger:
                     url += f"#L{original.line_start}"
             return url
         else:
-            return f"https://github.com/{self.github_owner}/{self.github_repo}/commit/{new_commit_hash}"
+            return f"https://github.com/{self.github_owner}/{self.github_repo}/tree/{new_commit_hash}"
 
     def verify_line_content(
         self, original: PermalinkInfo, replacement_commit: str
@@ -395,16 +451,19 @@ class SmartPermalinkTagger:
             start_idx = original.line_start - 1
             end_idx = (original.line_end or original.line_start) - 1
 
-            original_lines = original_content[start_idx : end_idx + 1]
-
-            # Check if the same lines exist in the replacement
-            if end_idx < len(replacement_content):
-                replacement_lines = replacement_content[start_idx : end_idx + 1]
-                return original_lines == replacement_lines
-            else:
+            # Validate line indices
+            if start_idx < 0 or end_idx < 0 or start_idx >= len(original_content) or start_idx >= len(replacement_content):
                 return False
 
-        except IndexError:
+            if end_idx >= len(original_content) or end_idx >= len(replacement_content):
+                return False
+
+            original_lines = original_content[start_idx : end_idx + 1]
+            replacement_lines = replacement_content[start_idx : end_idx + 1]
+
+            return original_lines == replacement_lines
+
+        except (IndexError, ValueError):
             return False
 
     def prompt_user_for_replacement(
@@ -461,7 +520,11 @@ class SmartPermalinkTagger:
         print("  4. Open replacement URL in browser to verify")
 
         while True:
-            choice = input("\nEnter your choice (1-4): ").strip()
+            try:
+                choice = input("\nEnter your choice (1-4): ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nInterrupted by user")
+                sys.exit(1)
 
             if choice == "1":
                 return "tag"
@@ -484,10 +547,14 @@ class SmartPermalinkTagger:
 
     def create_tag(self, commit_hash: str, commit_info: Dict[str, str]) -> str:
         """Create a descriptive tag for the commit."""
-        safe_subject = re.sub(r"[^a-zA-Z0-9\-_]", "-", commit_info["subject"][:30])
+        subject = commit_info.get("subject", "")
+        safe_subject = re.sub(r"[^a-zA-Z0-9\-_]", "-", subject[:30])
         safe_subject = re.sub(r"-+", "-", safe_subject).strip("-")
 
-        tag_name = f"{self.tag_prefix}-{commit_hash[:8]}-{safe_subject}"
+        if safe_subject:
+            tag_name = f"{self.tag_prefix}-{commit_hash[:8]}-{safe_subject}"
+        else:
+            tag_name = f"{self.tag_prefix}-{commit_hash[:8]}"
 
         if len(tag_name) > 100:
             tag_name = f"{self.tag_prefix}-{commit_hash[:8]}"
@@ -497,12 +564,12 @@ class SmartPermalinkTagger:
     def tag_exists(self, tag_name: str) -> bool:
         """Check if a tag already exists."""
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["git", "rev-parse", f"refs/tags/{tag_name}"],
                 capture_output=True,
-                check=True,
+                text=True,
             )
-            return True
+            return result.returncode == 0
         except subprocess.CalledProcessError:
             return False
 
@@ -544,20 +611,26 @@ class SmartPermalinkTagger:
                 print(f"  ❌ Commit {commit_hash} does not exist in this repository")
 
                 # Ask user if they want to try fetching the commit
-                fetch_choice = input(f"  Fetch commit {commit_hash} and its ancestors from origin? (y/n): ").strip().lower()
+                try:
+                    prompt = "Fetch commit {commit_hash} and its ancestors from origin?"
+                    if self.dry_run:
+                        prompt += " (even for dry run)"
+                    fetch_choice = input(f"  {prompt} (y/n): ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print("\n  Skipping fetch due to user interruption")
+                    sys.exit(1)
 
                 if fetch_choice == 'y' or fetch_choice == 'yes':
                     print(f"  🔄 Attempting to fetch commit {commit_hash}...")
                     try:
-                        if self.dry_run:
-                            print(f"  🧪️ Would fetch commit {commit_hash}, but as we're in dry run mode, Commit {commit_hash} does not exist in this repository.")
-                        else:
-                            # Try to fetch the specific commit
-                            subprocess.run(
-                                ["git", "fetch", "origin", "--depth=10000", commit_hash],
-                                capture_output=True,
-                                check=True,
-                            )
+                        # Try to fetch the specific commit
+                        result = subprocess.run(
+                            ["git", "fetch", "origin", "--depth=10000", commit_hash],
+                            capture_output=True,
+                            text=True,
+                            timeout=120,  # Add timeout to prevent hanging
+                        )
+                        if result.returncode == 0:
                             print(f"  🔽 Successfully fetched commit {commit_hash}")
 
                             # Check again if the commit exists after fetching
@@ -566,11 +639,16 @@ class SmartPermalinkTagger:
                                 continue
                             else:
                                 print(f"  🆗 Commit {commit_hash} is now available in the repository")
-                    except subprocess.CalledProcessError as e:
+                        else:
+                            print(f"  ❌ Failed to fetch commit {commit_hash}. STDERR: {result.stderr}")
+                            print("  ℹ️  You might need to ensure your remote 'origin' is up-to-date or unshallow your repository if it's a shallow clone.")
+                            continue
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                         print(f"  ❌ Failed to fetch commit {commit_hash}: {e}")
                         continue
                 else:
                     # User chose not to fetch
+                    print(f"  Skipping commit {commit_hash} as it's not found locally and fetch was declined.")
                     continue
 
             # Get commit info
@@ -623,18 +701,33 @@ class SmartPermalinkTagger:
                             else:
                                 # Perform the replacement in the file
                                 try:
-                                    with open(permalink.found_in_file, "r+", encoding="utf-8") as f:
+                                    file_path = permalink.found_in_file
+                                    if not file_path.exists():
+                                        print(f"  ❌ File {file_path} no longer exists")
+                                        continue
+
+                                    with open(file_path, "r", encoding="utf-8") as f:
                                         content = f.readlines()
-                                        # Replace all instances of the URL in the line with the new permalink, using exact
-                                        # substring search (not regex)
-                                        content[permalink.found_at_line - 1] = content[permalink.found_at_line - 1].replace(
-                                            permalink.url, replacement_url
-                                        )
-                                        f.seek(0)
+
+                                    if permalink.found_at_line > len(content) or permalink.found_at_line < 1:
+                                        print(f"  ❌ Line number {permalink.found_at_line} out of range in {file_path}")
+                                        continue
+
+                                    # Replace all instances of the URL in the line with the new permalink
+                                    original_line = content[permalink.found_at_line - 1]
+                                    if permalink.url not in original_line:
+                                        print(f"  ⚠️  Original URL not found in line {permalink.found_at_line} of {file_path}")
+                                        continue
+
+                                    content[permalink.found_at_line - 1] = original_line.replace(
+                                        permalink.url, replacement_url
+                                    )
+
+                                    with open(file_path, "w", encoding="utf-8") as f:
                                         f.writelines(content)
-                                        f.truncate()
-                                    print(f"  ✅ Replaced permalink in {permalink.found_in_file.relative_to(self.repo_root)} at line {permalink.found_at_line}")
-                                except Exception as e:
+
+                                    print(f"  ✅ Replaced permalink in {file_path.relative_to(self.repo_root)} at line {permalink.found_at_line}")
+                                except (IOError, OSError, UnicodeDecodeError, PermissionError) as e:
                                     print(
                                         f"  ❌ Failed to replace permalink in {permalink.found_in_file.relative_to(self.repo_root)}: {e}"
                                     )
@@ -666,7 +759,7 @@ class SmartPermalinkTagger:
                         tag_message = (
                             f"Preserve permalink reference to: {commit_info['subject']}"
                         )
-                        subprocess.run(
+                        result = subprocess.run(
                             [
                                 "git",
                                 "tag",
@@ -676,6 +769,8 @@ class SmartPermalinkTagger:
                                 "-m",
                                 tag_message,
                             ],
+                            capture_output=True,
+                            text=True,
                             check=True,
                         )
                         print(f"  🏷️ For commit {commit_hash[:8]}, successfully created tag: {tag_name}")
@@ -687,9 +782,15 @@ class SmartPermalinkTagger:
             if created_tags and not self.dry_run:
                 print(f"\n🚀 Pushing {len(created_tags)} tags to origin...")
                 try:
-                    subprocess.run(["git", "push", "origin"] + created_tags, check=True)
-                    print("  ✅ All tags pushed successfully!")
-                except subprocess.CalledProcessError as e:
+                    result = subprocess.run(
+                        ["git", "push", "origin"] + created_tags,
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        timeout=60,  # Add timeout for push operation
+                    )
+                    print("  ✅ All tags pushed successfully")
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
                     print(f"  ❌ Failed to push tags: {e}")
 
         # Handle replacements
@@ -737,6 +838,9 @@ def main():
             auto_tag=args.auto_tag,
         )
         tagger.run()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(1)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

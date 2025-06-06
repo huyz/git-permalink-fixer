@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Set, Optional
 import re
 import logging
 from .permalink import PermalinkInfo
@@ -14,10 +14,15 @@ from .constants import (
 logger = logging.getLogger(__name__)
 
 
-def should_skip_file_search(file_path: Path) -> bool:
+def should_skip_file_search(
+    file_path: Path,
+    repo_root: Path,
+    ignored_paths_from_git: Optional[Set[Path]] = None
+) -> bool:
     """Helper to determine if a file should be skipped during permalink search.
 
     Note that calling `file` would be too slow, so we use a heuristic.
+    Checks against a pre-computed set of git-ignored paths if provided.
     """
     if (
         file_path.is_dir()
@@ -26,6 +31,21 @@ def should_skip_file_search(file_path: Path) -> bool:
         or ".vscode" in file_path.parts
     ):
         return True
+
+    if ignored_paths_from_git:
+        # Check if the file itself or any of its parent directories up to the repo root
+        # are in the pre-computed set of ignored paths.
+        # The ignored_paths_from_git set contains absolute paths.
+        current_check_path = file_path
+        while True:
+            if current_check_path in ignored_paths_from_git:
+                return True
+            if current_check_path == repo_root: # Stop if we've checked the repo root itself
+                break
+            parent = current_check_path.parent
+            if parent == current_check_path: # Reached filesystem root
+                break
+            current_check_path = parent
 
     # Only search in text files or in common git repo filenames with no extension
     if file_path.suffix == "":

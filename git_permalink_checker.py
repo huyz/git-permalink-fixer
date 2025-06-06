@@ -57,7 +57,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 from git_permalink_checker_lib.file_ops import (
     extract_permalinks_from_file_lines,
@@ -96,6 +96,7 @@ class GitPermalinkChecker:
         auto_tag: bool = False,
         line_shift_tolerance: int = 20,
         repo_alias: Optional[List[str]] = None,
+        respect_gitignore: bool = True,
     ):
         self.verbose = verbose
         self.dry_run = dry_run
@@ -106,7 +107,9 @@ class GitPermalinkChecker:
         self.auto_tag = auto_tag
         self.line_shift_tolerance = line_shift_tolerance
         self.repo_alias = [alias.lower() for alias in repo_alias] if repo_alias else []
+        self.respect_gitignore = respect_gitignore
 
+        # Initialize repo and GitHub info first, as _load_ignored_paths might need them
         self.repo_root = get_repo_root()
         self.remote_url = get_remote_url()
         self.github_owner, self.github_repo = get_github_info_from_url(self.remote_url)
@@ -115,6 +118,29 @@ class GitPermalinkChecker:
         self.remembered_choice_with_ancestor: Optional[str] = None
         self.remembered_choice_no_ancestor: Optional[str] = None
         self._remember_skip_all_fetches: bool = False
+        self.ignored_paths_set: Set[Path] = self._load_ignored_paths() if self.respect_gitignore else set()
+
+    def _load_ignored_paths(self) -> Set[Path]:
+        """
+        Loads all git-ignored files and directories using 'git status --porcelain=v1 --ignored'.
+        Returns a set of absolute Paths.
+        """
+        ignored_set = set()
+        try:
+            # -C self.repo_root ensures the command runs in the repo root.
+            # Paths in output are relative to repo_root.
+            result = subprocess.run(
+                ["git", "-C", str(self.repo_root), "status", "--porcelain=v1", "--ignored"],
+                capture_output=True, text=True, check=True, encoding="utf-8"
+            )
+            for line in result.stdout.splitlines():
+                if line.startswith("!! "):
+                    # Output is "!! path/to/item", path is relative to repo root
+                    ignored_item_relative_path = line[3:].strip()
+                    ignored_set.add(self.repo_root / ignored_item_relative_path)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self._vprint(f"Warning: Could not get git ignored paths: {e}. Gitignore rules will not be applied effectively.")
+        return ignored_set
 
     def _vprint(self, *args, **kwargs):
         """Prints only if verbose mode is enabled."""
@@ -154,9 +180,46 @@ class GitPermalinkChecker:
 
         found_count = 0
         for file_path in self.repo_root.rglob("*"):
-            if should_skip_file_search(file_path):
+            # Determine if the file should be processed or skipped
+            process_this_file = True
+            log_as_skipped_due_to_gitignore = False
+
+            # 1. Check if skipped by fundamental rules (directory, .git, non-text extension)
+            #    Pass `None` for ignored_paths_from_git to check only fundamental rules.
+            skipped_by_fundamental_rules = should_skip_file_search(file_path, self.repo_root, None)
+
+            if skipped_by_fundamental_rules:
+                process_this_file = False
+            else:
+                # 2. Not skipped by fundamental rules. Now check .gitignore if respect_gitignore is active.
+                if self.respect_gitignore and self.ignored_paths_set:
+                    # Check if the file is covered by .gitignore rules by seeing if
+                    # should_skip_file_search returns True when the gitignore set IS provided.
+                    if should_skip_file_search(file_path, self.repo_root, self.ignored_paths_set):
+                        # Since skipped_by_fundamental_rules is False, this means it's skipped *solely* due to .gitignore
+                        process_this_file = False
+                        log_as_skipped_due_to_gitignore = True
+
+            if not process_this_file:
+                if log_as_skipped_due_to_gitignore and self.verbose:
+                    # Peek into the gitignored file to see if it contains permalinks for logging purposes
+                    try:
+                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f_ignored:
+                            lines_ignored = f_ignored.readlines()
+                        # Use a temporary count, don't affect main found_count or detailed logging
+                        permalinks_in_ignored_file, _, _ = extract_permalinks_from_file_lines(
+                            file_path, lines_ignored, self.repo_root, self.github_owner,
+                            self.github_repo, 0, self._normalize_repo_name,
+                        )
+                        if permalinks_in_ignored_file:
+                            self._vprint(
+                                f"  🙈 File skipped due to .gitignore rules but contains {len(permalinks_in_ignored_file)} permalink(s): {file_path.relative_to(self.repo_root)}"
+                            )
+                    except (UnicodeDecodeError, IOError, OSError, PermissionError) as e_log:
+                        self._vprint(f"  ⚠️ Could not read gitignored file {file_path.relative_to(self.repo_root)} for special logging: {e_log}")
                 continue
 
+            # If process_this_file is True, proceed with normal processing
             try:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
@@ -1205,7 +1268,8 @@ class GitPermalinkChecker:
         self._vprint(
             f"Repo aliases: {self.repo_alias if self.repo_alias else 'None'}"
         )
-        self._vprint(
+        self._vprint( # Added respect_gitignore
+            f"Respect gitignore: {self.respect_gitignore}, "
             f"Dry run: {self.dry_run}, Auto fetch: {self.auto_fetch_commits}, Auto replace: {self.auto_replace}, Auto tag: {self.auto_tag}"
         )
         self._vprint(f"Line shift tolerance: {self.line_shift_tolerance}")
@@ -1365,6 +1429,13 @@ def main():
              "that should be considered aliases for the current repository when parsing permalinks."
              " This flag can be used multiple times to specify different aliases.",
     )
+    parser.add_argument(
+        "--no-respect-gitignore",
+        action="store_false",
+        dest="respect_gitignore", # By default, respect_gitignore will be True
+        help="Disable checking .gitignore. By default, files ignored by git are skipped. "
+             "Set this flag to include them in the search (current behavior before this flag).",
+    )
 
     args = parser.parse_args()
 
@@ -1388,6 +1459,7 @@ def main():
             auto_tag=args.auto_tag,
             line_shift_tolerance=args.line_shift_tolerance,
             repo_alias=args.repo_alias,
+            respect_gitignore=args.respect_gitignore,
         )
         tagger.run()
     except KeyboardInterrupt:

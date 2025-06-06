@@ -166,6 +166,7 @@ class GitPermalinkChecker:
         if lower_repo_name == self.github_repo.lower() or lower_repo_name in self.repo_alias:
             return self.github_repo.lower()
         return lower_repo_name
+
     @staticmethod
     def _count_unique_commits_and_files(permalinks: List[PermalinkInfo]) -> Tuple[int, int]:
         """Helper to count unique commit hashes and unique files from a list of permalinks."""
@@ -406,7 +407,9 @@ class GitPermalinkChecker:
                 is_url_attempt = new_input.lower().startswith("https://")
                 if is_url_attempt:
                     # Attempt to parse as a GitHub URL
-                    parsed_info_from_url = parse_github_permalink(new_input, self.github_owner, self.github_repo, self._normalize_repo_name)
+                    parsed_info_from_url = parse_github_permalink(
+                        new_input, self.github_owner, self.github_repo, self._normalize_repo_name
+                    )
                     if parsed_info_from_url:
                         # Successfully parsed as a URL for *this* repo
                         if parsed_info_from_url.url_path: # It must point to a file
@@ -758,9 +761,7 @@ class GitPermalinkChecker:
                     while True:
                         # This is the existing "MISSING FILE RESOLUTION" but it's actually "LINES FOR MISSING FILE"
                         print("\nMISSING FILE RESOLUTION:")
-                        print(
-                            "  m. MANUALLY enter new line numbers (assumes file path is still desired)"
-                        )
+                        print("  m. MANUALLY enter new line numbers (assumes file path is still desired)")
                         print(
                             "  c. CLEAR line numbers from replacement URL (keeps file path if present)"
                         )
@@ -952,7 +953,7 @@ class GitPermalinkChecker:
         # Here, we check remembered choices for interactive mode.
         commit_is_currently_slated_for_tagging = False
         if (ancestor_commit and self.remembered_choice_with_ancestor == "tag") or \
-           (not ancestor_commit and self.remembered_choice_no_ancestor == "tag"):
+                (not ancestor_commit and self.remembered_choice_no_ancestor == "tag"):
             commit_is_currently_slated_for_tagging = True
 
         if commit_is_currently_slated_for_tagging and not self.auto_replace: # auto_replace would override remembered tag
@@ -984,9 +985,9 @@ class GitPermalinkChecker:
                 f"({len(permalinks_in_this_file)} permalink(s) for this commit)"
             )
 
-            perm_idx = 0
-            while perm_idx < len(permalinks_in_this_file):
-                permalink = permalinks_in_this_file[perm_idx]
+            permalink_idx = 0
+            while permalink_idx < len(permalinks_in_this_file):
+                permalink = permalinks_in_this_file[permalink_idx]
 
                 if stop_processing_permalinks_for_this_commit_entirely:
                     break
@@ -1010,8 +1011,8 @@ class GitPermalinkChecker:
                         commit_is_currently_slated_for_tagging = False
                         tag_to_create_for_commit = None
                         print(f"  ℹ️ Commit {commit_hash[:8]} is no longer slated for tagging. Re-evaluating current permalink.")
-                    # Do not increment perm_idx or commit_wide_replacement_idx; re-process current permalink
-                    continue # Restart the while loop for the current perm_idx
+                    # Do not increment permalink_idx or commit_wide_replacement_idx; re-process current permalink
+                    continue # Restart the while loop for the current permalink_idx
 
                 # If action is not "untag", we proceed with this permalink's decision
                 elif current_action == "tag":
@@ -1043,11 +1044,11 @@ class GitPermalinkChecker:
                                 else:
                                     print("      Invalid choice. Please select 1, 2, or 3.")
                         else: # No prior replacements, just tagging
-                             print(f"  ℹ️ Commit {commit_hash[:8]} will be tagged. Other permalinks for this commit will reflect this.")
-                             # If user chose "ta" (tag all), _prompt_user_for_final_action would have set remembered_choice.
-                             # If they just chose "t", we don't automatically stop unless they pick "ta" or sub_choice 2.
-                             # If 'ta' was chosen, self.remembered_choice_* would be 'tag'.
-                             # If 't' was chosen, and no sub-prompt, we continue.
+                            print(f"  ℹ️ Commit {commit_hash[:8]} will be tagged. Other permalinks for this commit will reflect this.")
+                            # If user chose "ta" (tag all), _prompt_user_for_final_action would have set remembered_choice.
+                            # If they just chose "t", we don't automatically stop unless they pick "ta" or sub_choice 2.
+                            # If 'ta' was chosen, self.remembered_choice_* would be 'tag'.
+                            # If 't' was chosen, and no sub-prompt, we continue.
 
                     # If commit was already slated and user chose 't' (which shouldn't be an option if UI is correct,
                     # as it would be '-t'), this path is defensive.
@@ -1063,7 +1064,7 @@ class GitPermalinkChecker:
                     print(f"  ⏭️ Skipping permalink: {permalink.url[:50]}...")
 
                 # Increment counters as we are done with this permalink (or decided to stop all for commit)
-                perm_idx += 1
+                permalink_idx += 1
                 commit_wide_replacement_idx += 1
 
                 if stop_processing_permalinks_for_this_commit_entirely:
@@ -1467,8 +1468,8 @@ def main():
     parser.add_argument(
         "--auto-replace",
         action="store_true",
-        help="Automatically replace permalinks with versions pointing to the closest ancestor in the main branch, if found.\n"
-        "Takes precedence over --auto-tag when an ancestor is available.",
+        help="Automatically replace permalinks with versions pointing to the closest ancestor in the main branch,"
+        " if found. Takes precedence over --auto-tag when an ancestor is available.",
     )
     parser.add_argument(
         "--non-interactive",
@@ -1483,22 +1484,23 @@ def main():
         "--line-shift-tolerance",
         type=int,
         default=20,
-        help="Max number of lines to shift up/down when searching for matching content in ancestor commits (default: %(default)s). Set to 0 to disable shifting.",
+        help="Max number of lines to shift up/down when searching for matching content in ancestor commits"
+        " (default: %(default)s). Set to 0 to disable shifting.",
     )
     parser.add_argument(
         "--repo-alias",
         default=[],
-        action='append',
-        help="Alternative repository names (e.g., 'old-repo-name' 'project-alias') "
-             "that should be considered aliases for the current repository when parsing permalinks."
-             " This flag can be used multiple times to specify different aliases.",
+        action="append",
+        help="Alternative repository names (e.g., 'old-repo-name' 'project-alias')"
+        " that should be considered aliases for the current repository when parsing permalinks.\n"
+        "This flag can be used multiple times to specify different aliases.",
     )
     parser.add_argument(
         "--no-respect-gitignore",
         action="store_false",
-        dest="respect_gitignore", # By default, respect_gitignore will be True
+        dest="respect_gitignore",  # By default, respect_gitignore will be True
         help="Disable checking .gitignore. By default, files ignored by git are skipped. "
-             "Set this flag to include them in the search (current behavior before this flag).",
+        "Set this flag to include them in the search (current behavior before this flag).",
     )
     parser.add_argument(
         "--output-json-report",

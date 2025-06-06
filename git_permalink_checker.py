@@ -95,6 +95,7 @@ class GitPermalinkChecker:
         auto_replace: bool = False,
         auto_tag: bool = False,
         line_shift_tolerance: int = 20,
+        repo_alias: Optional[List[str]] = None,
     ):
         self.verbose = verbose
         self.dry_run = dry_run
@@ -104,6 +105,7 @@ class GitPermalinkChecker:
         self.auto_replace = auto_replace
         self.auto_tag = auto_tag
         self.line_shift_tolerance = line_shift_tolerance
+        self.repo_alias = [alias.lower() for alias in repo_alias] if repo_alias else []
 
         self.repo_root = get_repo_root()
         self.remote_url = get_remote_url()
@@ -119,15 +121,21 @@ class GitPermalinkChecker:
         if self.verbose:
             print(*args, **kwargs)
 
-    @staticmethod
-    def _normalize_repo_name(repo_name: str) -> str:
-        """Normalize repository name by removing common prefixes."""
+    def _normalize_repo_name(self, repo_name: str) -> str:
+        """
+        Normalizes a repository name for comparison against the current repository.
+
+        If the given repo_name (case-insensitive) matches the main repository name
+        (self.github_repo) or is one of its configured aliases (self.repo_alias),
+        this method returns the lowercased main repository name.
+        Otherwise, it returns the lowercased version of the input repo_name.
+        """
         if not repo_name:
             return repo_name
-        # Special repo alias handling: platform-, risk-, rails-
-        # prefixes
-        return re.sub(r"^(?:platform-|risk-|rails-)", "", repo_name.lower())
-
+        lower_repo_name = repo_name.lower()
+        if lower_repo_name == self.github_repo.lower() or lower_repo_name in self.repo_alias:
+            return self.github_repo.lower()
+        return lower_repo_name
     @staticmethod
     def _count_unique_commits_and_files(permalinks: List[PermalinkInfo]) -> Tuple[int, int]:
         """Helper to count unique commit hashes and unique files from a list of permalinks."""
@@ -581,7 +589,7 @@ class GitPermalinkChecker:
 
         if remembered_choice:
             # If choice is remembered, we assume it implies how to handle lines too (e.g., auto-replace logic)
-            self._vprint(f"  🤖 Using remembered choice: {remembered_choice}")
+            self._vprint(f"    🤖 Using remembered choice: {remembered_choice}")
             return ( # Return the remembered action, and default path/lines
                 remembered_choice,
                 original.url_path,
@@ -1195,6 +1203,9 @@ class GitPermalinkChecker:
         self._vprint(f"GitHub: {self.github_owner}/{self.github_repo}")
         self._vprint(f"Main branch: {self.main_branch}, Tag prefix: {self.tag_prefix}")
         self._vprint(
+            f"Repo aliases: {self.repo_alias if self.repo_alias else 'None'}"
+        )
+        self._vprint(
             f"Dry run: {self.dry_run}, Auto fetch: {self.auto_fetch_commits}, Auto replace: {self.auto_replace}, Auto tag: {self.auto_tag}"
         )
         self._vprint(f"Line shift tolerance: {self.line_shift_tolerance}")
@@ -1259,7 +1270,7 @@ class GitPermalinkChecker:
                 replacements_in_file.sort(key=lambda item: item[0].found_at_line)
 
                 print(
-                    f"\n#[{group_idx + 1}/{len(sorted_file_paths)}] files: {file_path.relative_to(self.repo_root)} ({len(replacements_in_file)} replacement(s))"
+                    f"\n#{group_idx + 1}/{len(sorted_file_paths)} files: {file_path.relative_to(self.repo_root)} ({len(replacements_in_file)} replacement(s))"
                 )
 
                 for permalink_info, replacement_url in replacements_in_file:
@@ -1298,10 +1309,11 @@ def main():
         help="Enable verbose output for more detailed logging.",
     )
     parser.add_argument(
+        "-n",
         "--dry-run",
         action="store_true",
         help="Show what would be done without making any changes (tags, file modifications, or remote pushes)."
-        "Note: will still attempt to fetch commits if they are not found locally.",
+        " Note: will still attempt to fetch commits if they are not found locally.",
     )
     parser.add_argument(
         "--main-branch",
@@ -1345,6 +1357,14 @@ def main():
         default=20,
         help="Max number of lines to shift up/down when searching for matching content in ancestor commits (default: %(default)s). Set to 0 to disable shifting.",
     )
+    parser.add_argument(
+        "--repo-alias",
+        default=[],
+        action='append',
+        help="Alternative repository names (e.g., 'old-repo-name' 'project-alias') "
+             "that should be considered aliases for the current repository when parsing permalinks."
+             " This flag can be used multiple times to specify different aliases.",
+    )
 
     args = parser.parse_args()
 
@@ -1367,6 +1387,7 @@ def main():
             auto_replace=args.auto_replace,
             auto_tag=args.auto_tag,
             line_shift_tolerance=args.line_shift_tolerance,
+            repo_alias=args.repo_alias,
         )
         tagger.run()
     except KeyboardInterrupt:

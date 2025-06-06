@@ -56,6 +56,7 @@ import argparse
 import re
 import subprocess
 import sys
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 
@@ -97,6 +98,7 @@ class GitPermalinkChecker:
         line_shift_tolerance: int = 20,
         repo_alias: Optional[List[str]] = None,
         respect_gitignore: bool = True,
+        output_json_report: Optional[str] = None,
     ):
         self.verbose = verbose
         self.dry_run = dry_run
@@ -108,6 +110,8 @@ class GitPermalinkChecker:
         self.line_shift_tolerance = line_shift_tolerance
         self.repo_alias = [alias.lower() for alias in repo_alias] if repo_alias else []
         self.respect_gitignore = respect_gitignore
+        self.output_json_report_path = Path(output_json_report) if output_json_report else None
+        self.report_data: Dict[str, List] = {"replacements": [], "tags_created": []}
 
         # Initialize repo and GitHub info first, as _load_ignored_paths might need them
         self.repo_root = get_repo_root()
@@ -1193,6 +1197,14 @@ class GitPermalinkChecker:
         final_commits_to_tag = [(ch, ci) for ch, ci in unique_commits_to_tag_dict.items()]
 
         for commit_hash, commit_info in final_commits_to_tag:
+            report_entry_for_this_tag = None
+            if self.output_json_report_path:
+                report_entry_for_this_tag = {
+                    "commit_hash": commit_hash,
+                    "commit_subject": commit_info.get("subject", "N/A"),
+                    # tag_name, tag_message, and status will be set below
+                }
+
             tag_name = generate_git_tag_name(commit_hash, commit_info.get("subject", ""), self.tag_prefix)
 
             if git_tag_exists(tag_name):
@@ -1200,15 +1212,40 @@ class GitPermalinkChecker:
                 continue
 
             tag_message = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"
-            if execute_git_tag_creation(tag_name, commit_hash, tag_message, self.dry_run):
+
+            if report_entry_for_this_tag:
+                report_entry_for_this_tag["tag_name"] = tag_name
+                report_entry_for_this_tag["tag_message"] = tag_message
+
+            if git_tag_exists(tag_name): # Check again, as it might have been created by another process or concurrently
+                print(f"  ✅ Tag {tag_name} already exists for commit {commit_hash[:8]}")
+                if report_entry_for_this_tag:
+                    report_entry_for_this_tag["status"] = "already_exists"
+                    self.report_data["tags_created"].append(report_entry_for_this_tag)
+                continue
+
+            tag_created_successfully_or_simulated = execute_git_tag_creation(
+                tag_name, commit_hash, tag_message, self.dry_run
+            )
+
+            if tag_created_successfully_or_simulated:
                 if self.dry_run: # Message already printed by execute_git_tag_creation
-                    pass # No specific message here, already handled
+                    if report_entry_for_this_tag:
+                        report_entry_for_this_tag["status"] = "would_create"
                 else:
-                    print(f"  🏷️ For commit {commit_hash[:8]}, successfully created tag: {tag_name}")
+                    # Message already printed by execute_git_tag_creation
+                    # print(f"  🏷️ For commit {commit_hash[:8]}, successfully created tag: {tag_name}")
+                    if report_entry_for_this_tag:
+                        report_entry_for_this_tag["status"] = "created"
                 created_tag_names.append(tag_name)
             else:
                 # Error message already printed by execute_git_tag_creation
-                pass
+                if report_entry_for_this_tag:
+                    report_entry_for_this_tag["status"] = "failed_to_create"
+
+            if report_entry_for_this_tag and "status" in report_entry_for_this_tag:
+                self.report_data["tags_created"].append(report_entry_for_this_tag)
+
         self._push_created_tags(created_tag_names)
 
     def _push_created_tags(self, created_tag_names: List[str]) -> None:
@@ -1272,6 +1309,8 @@ class GitPermalinkChecker:
             f"Respect gitignore: {self.respect_gitignore}, "
             f"Dry run: {self.dry_run}, Auto fetch: {self.auto_fetch_commits}, Auto replace: {self.auto_replace}, Auto tag: {self.auto_tag}"
         )
+        if self.output_json_report_path:
+            self._vprint(f"JSON Report output: {self.output_json_report_path}")
         self._vprint(f"Line shift tolerance: {self.line_shift_tolerance}")
         self._vprint("-" * 50)
 
@@ -1305,6 +1344,17 @@ class GitPermalinkChecker:
             all_replacements_to_make.extend(replacements_from_commit)
 
         print(f"\n{'=' * 80}")
+
+        # Populate report data for replacements
+        if self.output_json_report_path and all_replacements_to_make:
+            for permalink_info, replacement_url in all_replacements_to_make:
+                self.report_data["replacements"].append({
+                    "original_url": permalink_info.url,
+                    "new_url": replacement_url,
+                    "found_in_file": str(permalink_info.found_in_file.relative_to(self.repo_root)),
+                    "found_at_line": permalink_info.found_at_line,
+                })
+
 
         # Perform actual file modifications for replacements
         if all_replacements_to_make:
@@ -1358,7 +1408,21 @@ class GitPermalinkChecker:
         if all_commits_to_tag:
             self._process_and_create_tags(all_commits_to_tag)
 
+        self._write_json_report()
         print("\n🏁 Permalink checking complete.")
+
+    def _write_json_report(self):
+        """Writes the collected report data to a JSON file if a path is specified."""
+        if not self.output_json_report_path:
+            return
+
+        try:
+            with open(self.output_json_report_path, "w", encoding="utf-8") as f:
+                json.dump(self.report_data, f, indent=2)
+            print(f"\n📝 JSON report written to: {self.output_json_report_path}")
+        except IOError as e:
+            print(f"\n❌ Error writing JSON report to {self.output_json_report_path}: {e}", file=sys.stderr)
+
 
 
 def main():
@@ -1436,6 +1500,12 @@ def main():
         help="Disable checking .gitignore. By default, files ignored by git are skipped. "
              "Set this flag to include them in the search (current behavior before this flag).",
     )
+    parser.add_argument(
+        "--output-json-report",
+        type=str,
+        default=None,
+        help="File path to output a JSON report of actions (replacements and tags).",
+    )
 
     args = parser.parse_args()
 
@@ -1460,6 +1530,7 @@ def main():
             line_shift_tolerance=args.line_shift_tolerance,
             repo_alias=args.repo_alias,
             respect_gitignore=args.respect_gitignore,
+            output_json_report=args.output_json_report,
         )
         tagger.run()
     except KeyboardInterrupt:

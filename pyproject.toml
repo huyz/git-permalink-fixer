@@ -1,5 +1,5 @@
 [project]
-name = "git-permalink-fixer"
+name = "git-permalink-checker"
 version = "0.1.0"
 description = "Add your description here"
 authors = [
@@ -10,6 +10,9 @@ dependencies = [
 ]
 readme = "README.md"
 requires-python = ">= 3.9"
+
+[project.scripts]
+"git-permalink-checker" = "git_permalink_checker:main"
 
 [build-system]
 requires = ["hatchling"]

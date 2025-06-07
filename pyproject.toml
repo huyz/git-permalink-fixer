@@ -21,9 +21,16 @@ build-backend = "hatchling.build"
 [tool.rye]
 managed = true
 dev-dependencies = []
+line-length = 100  # Default is 88
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/git_permalink_fixer"]
+
+[tool.black]
+line-length = 100  # Default is 88
+
+[tool.prettier]
+tabWidth = 4  # Default is 2

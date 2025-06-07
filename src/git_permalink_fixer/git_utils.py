@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Tuple, Callable
 import re
 import sys
 
-from git_permalink_checker_lib.constants import GITHUB_REMOTE_RE
+from .constants import GITHUB_REMOTE_RE
 
 
 def get_repo_root() -> Path:

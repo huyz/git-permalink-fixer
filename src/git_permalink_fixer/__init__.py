@@ -16,9 +16,9 @@ are no longer referenced.
 Usage
 -----
 
-python3 git_permalink_checker.py [OPTIONS]
+python3 git_permalink_fixer.py [OPTIONS]
 
-For all flags, run `python3 git_permalink_checker.py -h`
+For all flags, run `python3 git_permalink_fixer.py -h`
 
 
 Supported
@@ -48,12 +48,12 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
 
-from git_permalink_checker_lib.file_ops import (
+from .file_ops import (
     extract_permalinks_from_file_lines,
     should_skip_file_search,
     parse_github_blob_permalink,
 )
-from git_permalink_checker_lib.git_utils import (
+from .git_utils import (
     get_repo_root,
     get_remote_url,
     is_commit_in_main,
@@ -67,8 +67,8 @@ from git_permalink_checker_lib.git_utils import (
     fetch_commit_if_missing,
     get_github_info_from_url,
 )
-from git_permalink_checker_lib.permalink import PermalinkInfo
-from git_permalink_checker_lib.web_utils import (
+from .permalink import PermalinkInfo
+from .web_utils import (
     open_urls_in_browser,
     fetch_raw_github_content_from_url,
 )
@@ -685,7 +685,7 @@ class GitPermalinkChecker:
 
                 is_url_attempt = new_input.lower().startswith("https://")
                 if is_url_attempt:
-                    parsed_new_gh_url_info = parse_any_github_file_url(new_input)
+                    parsed_new_gh_url_info = parse_github_blob_permalink(new_input)
                     if parsed_new_gh_url_info: # New input is a GitHub URL
                         new_gh_owner, new_gh_repo, new_gh_ref, new_gh_path, new_gh_ls, new_gh_le = parsed_new_gh_url_info
                         # Check if this new URL is different from the current context

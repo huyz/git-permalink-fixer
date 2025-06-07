@@ -1,5 +1,5 @@
 [project]
-name = "git-permalink-checker"
+name = "git-permalink-fixer"
 version = "0.1.0"
 description = "Add your description here"
 authors = [
@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">= 3.9"
 
 [project.scripts]
-"git-permalink-checker" = "git_permalink_checker:main"
+"git-permalink-fixer" = "git_permalink_fixer:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -26,4 +26,4 @@ dev-dependencies = []
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/git_permalink_checker"]
+packages = ["src/git_permalink_fixer"]

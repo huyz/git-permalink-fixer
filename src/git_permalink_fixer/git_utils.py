@@ -8,6 +8,7 @@ from .constants import GITHUB_REMOTE_RE
 
 
 def get_repo_root() -> Path:
+    """Returns the repo's root in the filesystem"""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],

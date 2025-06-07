@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Tuple, Set, Optional
 import re
 import logging
-from .permalink import PermalinkInfo
+from .permalink_info import PermalinkInfo
 from .constants import (
     COMMON_EXTENSIONLESS_REPO_FILES,
     COMMON_TEXT_FILE_EXTENSIONS,
@@ -58,12 +58,12 @@ def should_skip_file_search(
     return False
 
 
-def extract_permalinks_from_file_lines(
+def extract_permalinks_from_file(
     file_path: Path,
     lines: List[str],
     repo_root: Path,
-    github_owner: str,
-    github_repo: str,
+    git_owner: str,
+    git_repo: str,
     current_found_count: int,
     normalize_repo_name_func=None,
 ) -> Tuple[List[PermalinkInfo], int, bool]:
@@ -75,7 +75,7 @@ def extract_permalinks_from_file_lines(
         permalinks_found_on_this_line = []
         for url in urls_in_line:
             permalink_info = parse_github_permalink(
-                url, github_owner, github_repo, normalize_repo_name_func
+                url, git_owner, git_repo, normalize_repo_name_func
             )
             if permalink_info:
                 permalink_info.found_in_file = file_path
@@ -97,7 +97,7 @@ def extract_permalinks_from_file_lines(
 
 
 def parse_github_permalink(
-    url: str, github_owner: str, github_repo: str, normalize_repo_name_func=None
+    url: str, git_owner: str, git_repo: str, normalize_repo_name_func=None
 ) -> PermalinkInfo | None:
     """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers."""
 
@@ -112,10 +112,10 @@ def parse_github_permalink(
         return None
 
     # Only process URLs from the current repository
-    if owner.lower() != github_owner.lower() or (
-        normalize_repo_name_func(repo) != normalize_repo_name_func(github_repo)
+    if owner.lower() != git_owner.lower() or (
+        normalize_repo_name_func(repo) != normalize_repo_name_func(git_repo)
         if normalize_repo_name_func
-        else repo.lower() != github_repo.lower()
+        else repo.lower() != git_repo.lower()
     ):
         return None
 

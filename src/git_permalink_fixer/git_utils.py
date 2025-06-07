@@ -110,7 +110,7 @@ def get_file_content_at_commit(commit_hash: str, url_path: str) -> Optional[List
         return None
 
 
-def generate_git_tag_name(commit_hash: str, commit_subject: str, tag_prefix: str) -> str:
+def gen_git_tag_name(commit_hash: str, commit_subject: str, tag_prefix: str) -> str:
     """Create a descriptive tag name for the commit."""
     safe_subject = re.sub(r"[^a-zA-Z0-9\-_]", "-", commit_subject[:30])
     safe_subject = re.sub(r"-+", "-", safe_subject).strip("-")
@@ -140,7 +140,7 @@ def git_tag_exists(tag_name: str) -> bool:
         return False
 
 
-def execute_git_tag_creation(tag_name: str, commit_hash: str, tag_message: str, dry_run: bool) -> bool:
+def create_git_tag(tag_name: str, commit_hash: str, tag_message: str, dry_run: bool) -> bool:
     """Executes the git tag command."""
     if dry_run:
         print(f"🧪 DRY RUN: Would create tag: {tag_name} for commit {commit_hash[:8]} with message '{tag_message}'")
@@ -299,3 +299,20 @@ def file_exists_at_commit(commit_hash: str, url_path: str) -> bool:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(f"Error: Checking if file '{url_path}' exists at commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
         return False
+
+
+def update_url_with_line_numbers(base_url: str, line_start: Optional[int], line_end: Optional[int]) -> str:
+    """Updates a given URL with new line number fragments, removing old ones.
+    This only supports GitHub permalink format.
+    """
+    url_no_frag = base_url.split('#')[0]
+    if line_start is not None:
+        if line_end is not None and line_end != line_start:
+            return f"{url_no_frag}#L{line_start}-L{line_end}"
+        elif line_end is None and line_start > 0: # Single line
+            return f"{url_no_frag}#L{line_start}"
+        elif line_end is not None and line_end == line_start: # Single line specified as range
+            return f"{url_no_frag}#L{line_start}"
+        # If line_start is 0 or invalid, or line_end implies no range, don't add fragment.
+        # This case should ideally be handled by the caller ensuring line_start is valid if provided.
+    return url_no_frag # No valid line_start provided or it was meant to be cleared.

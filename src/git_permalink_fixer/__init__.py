@@ -444,332 +444,195 @@ class GitPermalinkChecker:
             return update_url_with_line_numbers(url_no_frag, repl_ls, repl_le)
 
 
-    def _parse_and_confirm_manual_url_input(
-        self,
-        user_input: str,
-        # context_commit_for_path_extraction is the commit against which a path might be extracted
-        # from the user_input if it's a URL pointing to this specific commit.
-        context_commit_for_path_extraction: Optional[str],
-    ) -> Tuple[str, Optional[str], Optional[int], Optional[int]]:
-        """
-        Parses user input that might be a URL, confirms it, and extracts relevant info.
-
-        Returns:
-            A tuple (status, value1, ls, le):
-            - status (str):
-                - "path_extracted": URL was for context_commit, value1 is the extracted path.
-                - "url_confirmed": A generic URL was confirmed, value1 is the URL string.
-                - "url_rejected": User rejected the URL. value1 is None.
-                - "not_a_url": Input was not a URL. value1 is the original user_input.
-            - value1 (Optional[str]): Path string, URL string, or original input.
-            - ls (Optional[int]): Parsed line start from URL fragment.
-            - le (Optional[int]): Parsed line end from URL fragment.
-        """
-        if not user_input.lower().startswith("https://"):
-            return "not_a_url", user_input, None, None
-
-        repl_gh_info = parse_github_blob_permalink(user_input)
-        if repl_gh_info:  # It's a GitHub blob URL
-            gh_owner, gh_repo, gh_ref, gh_path, gh_ls, gh_le = repl_gh_info
-            is_current_repo_link = (
-                gh_owner.lower() == self.git_owner.lower()
-                and self._normalize_repo_name(gh_repo) == self.git_repo.lower()
-            )
-
-            if (
-                context_commit_for_path_extraction
-                and is_current_repo_link
-                and gh_ref == context_commit_for_path_extraction
-                and gh_path
-            ):
-                print(
-                    f"    Parsed as URL for current context commit ({context_commit_for_path_extraction[:8]}). Using file path: '{gh_path}'"
-                )
-                return "path_extracted", gh_path, gh_ls, gh_le
-            else:
-                confirm_external = input(
-                    f"    ❗ The GitHub URL points to '{gh_owner}/{gh_repo}/blob/{gh_ref}'. Are you sure? (y/n): "
-                ).strip().lower()
-                return ("url_confirmed", user_input, gh_ls, gh_le) if confirm_external == "y" else ("url_rejected", None, None, None)
-        else:  # Arbitrary URL (not parseable as GitHub blob, but starts with https://)
-            confirm_arbitrary = input(
-                f"    ❗ The input '{user_input}' is not a recognized GitHub file URL. Are you sure? (y/n): "
-            ).strip().lower()
-            if confirm_arbitrary == "y":
-                arb_ls, arb_le = None, None
-                match_lines_frag = re.search(r"#L(\d+)(?:-L(\d+))?$", user_input)
-                if match_lines_frag:
-                    arb_ls = int(match_lines_frag.group(1))
-                    if match_lines_frag.group(2):
-                        arb_le = int(match_lines_frag.group(2))
-                return "url_confirmed", user_input, arb_ls, arb_le
-            else:
-                return "url_rejected", None, None, None
-
-    def _prompt_user_to_resolve_url_path(
+    def _resolve_replacement_interactively(
         self,
         original: PermalinkInfo,
-        ancestor_commit: str,
-        initial_path_to_check: str,
-        initial_ls: Optional[int],
-        initial_le: Optional[int],
-    ) -> Tuple[str, Optional[int], Optional[int], bool, str]:
+        ancestor_commit: Optional[str],  # Fixed for the duration of this resolution
+    ) -> Tuple[Optional[str], bool]:  # (final_repl_url, aborted)
         """
-        Interactively resolve the file path for replacement if it's missing in the ancestor.
-        Returns: (resolved_target_spec, resolved_ls, resolved_le, should_abort, target_type)
-        target_spec is a file path string or a full URL string.
-        target_type is "path", "user_provided_url".
+        Interactively resolves a permalink replacement, handling missing paths and line mismatches.
         """
-        path_to_check = initial_path_to_check
-        current_ls, current_le = initial_ls, initial_le
+        current_is_external = ancestor_commit is None
+        current_external_url_base: Optional[str] = None
+        current_path_for_ancestor: Optional[str] = original.url_path if ancestor_commit else None
+        current_ls: Optional[int] = original.line_start
+        current_le: Optional[int] = original.line_end
+        temp_custom_abs_tolerance: Optional[int] = None # For 't' option
 
-        while not file_exists_at_commit(ancestor_commit, path_to_check):
-            self._vprint(
-                f"\n❌ File '{path_to_check}' (from original or last input) does not exist in ancestor {ancestor_commit[:8]}"
-            )
-            print("\n❓ MISSING FILE RESOLUTION:")
-            print("  o) Open original and replacement URLs in browser")
-            print("  m) MANUALLY override with a new URL path or a new full URL")
-            print("  k) KEEP current path for replacement URL (it will likely be broken)")
-            print("  a) ABORT replacement for this permalink (skip)")
-            menu_choice = input("\nSelect resolution for missing file (o,m,k,a): ").strip().lower()
-
-            if menu_choice == "o":
-                broken_repl_url = self._create_repl_permalink(
-                    original, ancestor_commit, path_to_check, current_ls, current_le
-                )
-                urls_to_open = [
-                    ("original URL", original.url),
-                    ("(likely broken) replacement URL", broken_repl_url),
-                ]
-                open_urls_in_browser(urls_to_open)
-                continue  # Re-prompt
-            elif menu_choice == "m":
-                # The user may enter:
-                # - a relative path from the repo root,
-                # - a full path that starts with the prefix of the repo root,
-                # - a full GitHub URL that starts with the same prefix as the original URL.
-                # - any arbitrary URL, if the user confirms
-                new_input = input(
-                    "    Enter the new URL path (relative to the repo root), or the full file path, or any URL: "
-                ).strip()
-                if not new_input:
-                    print("    Input cannot be empty. Try again.")
-                    continue  # Re-prompt for manual input
-
-                status, extracted_value, val_ls, val_le = self._parse_and_confirm_manual_url_input(new_input, ancestor_commit)
-
-                if status == "path_extracted":
-                    # extracted_value is github url_path, val_ls/val_le are from the URL fragment or None
-                    path_to_check = extracted_value
-                    current_ls = val_ls if val_ls is not None else original.line_start
-                    current_le = val_le if val_le is not None else original.line_end
-                    # Loop continues to check file_exists_at_commit with this new path_to_check
-                    continue
-                elif status == "url_confirmed":
-                    # extracted_value is the confirmed URL string, val_ls/val_le are from its fragment or None
-                    return extracted_value, val_ls, val_le, False, "user_provided_url"
-                elif status == "url_rejected":
-                    continue # Re-prompt for manual input
-                elif status == "not_a_url":
-                    # Input is treated as a file path (relative or absolute)
-                    input_path_obj = Path(new_input)
-                    if input_path_obj.is_absolute():
-                        try:
-                            # Convert an absolute path to relative if it's within the repo root
-                            relative_path = input_path_obj.relative_to(self.repo_root)
-                            new_relative_path_str = str(relative_path)
-                        except ValueError:
-                            print(
-                                f"    Absolute path '{new_input}' is not within the repository root '{self.repo_root}'."
-                                " Please provide a relative path, an absolute path within the repository, or a full GitHub URL."
-                            )
-                            continue  # Re-prompt for manual input
-                    else:  # Input is a relative path
-                        new_relative_path_str = new_input
-
-                    if new_relative_path_str is not None:
-                        print(
-                            f"    Using file path: '{new_relative_path_str}'. Line numbers will be re-evaluated based on original permalink if applicable."
-                        )
-                        path_to_check = new_relative_path_str
-                        # current_ls, current_le retain values from original permalink or previous URL input if path_extracted
-                continue  # Loop will re-evaluate existence
-            elif menu_choice == "k":
-                self._vprint(
-                    f"    Keeping path '{path_to_check}' for replacement URL, though it's missing in ancestor."
-                )
-                return path_to_check, current_ls, current_le, False, "path"
-
-            elif menu_choice == "a":
-                print("    Aborting replacement for this permalink.")
-                return initial_path_to_check, initial_ls, initial_le, True, "path"  # Abort
-            else:
-                print("    Invalid choice. Try again.")
-
-        return path_to_check, current_ls, current_le, False, "path"  # File exists, don't abort
-
-    def _prompt_user_to_resolve_line_mismatch(
-        self,
-        original: PermalinkInfo,
-        # Context for verification - either local ancestor or an external URL
-        ancestor_commit_or_external_url: str,  # If is_external_source, this is the URL
-        repl_url_path_or_none: Optional[str],  # Path if local, None if external_url is primary
-        initial_ls: Optional[int],
-        initial_le: Optional[int],
-        is_external_source: bool = False,
-    ) -> Tuple[Optional[int], Optional[int], bool, Optional[str]]:
-        """
-        Interactively resolve line number mismatches.
-        Returns: (resolved_ls, resolved_le, should_abort_permalink, overriding_url_if_provided)
-        The overriding_url_if_provided is a full URL string if the user chose to replace with a new URL.
-        """
-        current_ls, current_le = initial_ls, initial_le
-        # The primary target for verification/replacement:
-        verification_target_url = ancestor_commit_or_external_url if is_external_source else None
-        verification_target_commit = None if is_external_source else ancestor_commit_or_external_url
-        verification_target_path = None if is_external_source else repl_url_path_or_none
+        if current_is_external:
+            self._vprint(f"  ℹ️ Original commit {original.commit_hash[:8]} has no suitable ancestor in {self.main_branch} or one was not provided.")
+            self._vprint(f"     User will need to provide a full replacement URL or skip this permalink.")
 
         while True:
-            print("\n❓ LINE MISMATCH RESOLUTION:")
-            print("  o) OPEN original and replacement URLs in browser")
-            print("  l) retry with different LINE shift tolerance for search")
-            print(
-                "  m) MANUALLY override the line numbers OR with a full GitHub URL"
-            )
-            print("  c) CLEAR line numbers from replacement URL")
-            print("  k) KEEP original line numbers in replacement URL")
-            print("  a) ABORT replacement (skip this permalink for now)")
-            menu_choice = input("\nSelect resolution for lines (o,l,m,c,k,a): ").strip().lower()
+            problem_description = ""
+            # candidate_verified_ls, candidate_verified_le are effectively current_ls, current_le for menu display
+
+            # 1. Evaluate current candidate state to determine if it's resolvable or what the problem is
+            if current_is_external:
+                if not current_external_url_base:
+                    problem_description = "No external URL specified. Provide one ('u') or choose another option."
+                elif original.line_start is not None: # Only verify lines if original had them
+                    verify_url = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                    self._vprint(f"Verifying external URL: {verify_url}")
+                    match, v_ls, v_le = self._verify_line_content_from_url(original, verify_url)
+                    if match:
+                        final_url = update_url_with_line_numbers(current_external_url_base, v_ls, v_le)
+                        print(f"✅ Content matches for external URL. Proposed: {final_url}")
+                        return final_url, False
+                    else:
+                        problem_description = f"Line content differs or cannot be verified for external URL {current_external_url_base}."
+                else: # External URL, original had no lines
+                    final_url = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                    print(f"✅ Using external URL (no line verification needed): {final_url}")
+                    return final_url, False
+            elif ancestor_commit: # Target is ancestor commit
+                if not current_path_for_ancestor and original.url_path:
+                    problem_description = "Path for ancestor was cleared. Specify a new path ('p') or clear lines ('c') if this is intended for commit root."
+                elif not current_path_for_ancestor and not original.url_path: # Tree link
+                    final_url = self._create_repl_permalink(original, ancestor_commit, None, None, None)
+                    print(f"✅ Using tree-style link for ancestor: {final_url}")
+                    return final_url, False
+                elif current_path_for_ancestor and not file_exists_at_commit(ancestor_commit, current_path_for_ancestor):
+                    problem_description = f"File '{current_path_for_ancestor}' does not exist in ancestor {ancestor_commit[:8]}."
+                elif current_path_for_ancestor: # Path exists
+                    if original.line_start is None: # Original had no lines
+                        final_url = self._create_repl_permalink(original, ancestor_commit, current_path_for_ancestor, None, None)
+                        print(f"✅ Path exists in ancestor (no line verification needed): {final_url}")
+                        return final_url, False
+                    else: # Original had lines, verify them
+                        self._vprint(f"Verifying content in ancestor {ancestor_commit[:8]}:{current_path_for_ancestor}...")
+                        match, v_ls, v_le = self._verify_line_content(
+                            original, ancestor_commit, current_path_for_ancestor,
+                            custom_tolerance=temp_custom_abs_tolerance
+                        )
+                        temp_custom_abs_tolerance = None # Reset after use
+
+                        if match:
+                            final_url = self._create_repl_permalink(original, ancestor_commit, current_path_for_ancestor, v_ls, v_le)
+                            orig_line_str = f"L{original.line_start}" + (f"-L{original.line_end}" if original.line_end and original.line_end != original.line_start else "")
+                            new_line_str = f"L{v_ls}" + (f"-L{v_le}" if v_le and v_le != v_ls else "")
+                            if new_line_str == orig_line_str: print(f"✅ Line content matches at {orig_line_str} in ancestor.")
+                            else: print(f"✅ Line content matches, found at {new_line_str} in ancestor (original was {orig_line_str}).")
+                            print(f"Proposed: {final_url}")
+                            return final_url, False
+                        else:
+                            problem_description = f"Line content differs in ancestor {ancestor_commit[:8]}:{current_path_for_ancestor} (current tolerance: {self.line_shift_tolerance_str})."
+            else: # Should not happen
+                problem_description = "Cannot determine replacement target. No ancestor and no external URL mode."
+
+            # 2. Display problem and menu
+            print(f"\n❓ PERMALINK RESOLUTION for: {original.url}")
+            if problem_description:
+                print(f"  ⚠️ Current issue: {problem_description}")
+
+            print("  OPTIONS:")
+            print("  o) Open original and current candidate URLs in browser")
+            if ancestor_commit:
+                print("  p) Set new URL path (for ancestor commit) and check again")
+            print("  l) Set new line numbers (for current target) and check again")
+            print("  u) Set new full URL (override)")
+            if ancestor_commit and current_path_for_ancestor and original.line_start is not None:
+                print(f"  t) Retry content check with different shift tolerance (current global: {self.line_shift_tolerance_str})")
+            print("  c) Clear line numbers from replacement and accept")
+            print("  k) Keep current settings (proceed to final action prompt, URL may be broken)")
+            print("  a) Abort replacement for this permalink (skip)")
+            menu_choice = input("\nSelect resolution option: ").strip().lower()
 
             if menu_choice == "o":
-                if is_external_source and verification_target_url:
-                    broken_repl_url = update_url_with_line_numbers(
-                        verification_target_url, current_ls, current_le
-                    )
-                elif verification_target_commit and verification_target_path:
-                    broken_repl_url = self._create_repl_permalink(
-                        original,
-                        verification_target_commit,
-                        verification_target_path,
-                        current_ls,
-                        current_le,
-                    )
-                else:  # Should not happen
-                    broken_repl_url = "ERROR_COULD_NOT_FORM_URL"
+                urls_to_open_list = [("Original URL", original.url)]
+                candidate_display_url = "N/A (not yet defined)"
+                if current_is_external and current_external_url_base:
+                    candidate_display_url = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                elif ancestor_commit and current_path_for_ancestor:
+                    candidate_display_url = self._create_repl_permalink(original, ancestor_commit, current_path_for_ancestor, current_ls, current_le)
+                elif ancestor_commit and not current_path_for_ancestor: # tree link for ancestor
+                    candidate_display_url = self._create_repl_permalink(original, ancestor_commit, None, None, None)
 
-                urls_to_open = [
-                    ("original URL", original.url),
-                    ("(likely broken) replacement URL", broken_repl_url),
-                ]
-                open_urls_in_browser(urls_to_open)
-                continue  # Re-prompt
+                if candidate_display_url != "N/A (not yet defined)":
+                    urls_to_open_list.append(("Candidate Replacement URL", candidate_display_url))
+                open_urls_in_browser(urls_to_open_list)
+                continue
+            elif menu_choice == "p" and ancestor_commit:
+                new_path_input = input("    Enter new file path (relative to repo root for ancestor): ").strip()
+                if not new_path_input: print("    Path cannot be empty. Try again."); continue
+                current_path_for_ancestor = new_path_input
+                current_is_external = False
+                current_ls, current_le = original.line_start, original.line_end # Reset lines
+                print(f"    Set path for ancestor to: '{current_path_for_ancestor}'. Lines reset to original.")
+                continue
             elif menu_choice == "l":
-                abs_custom_tolerance: int
+                new_lines_input = input("    Enter new line numbers (e.g., 10 or 10-15, or empty to clear): ").strip()
+                if not new_lines_input: current_ls, current_le = None, None; print("    Line numbers cleared."); continue
                 try:
-                    new_tol_input = input(
-                        f"    Enter new tolerance (current global: {self.line_shift_tolerance_str}, e.g., 20 or 10%, 0 to disable shift): "
-                    ).strip()
-                    if not new_tol_input:
-                        print("    Input cannot be empty. Try again.")
-                        continue
-
-                    is_tol_percentage, tol_value = parse_tolerance_input(new_tol_input)
-
-                    if is_external_source and verification_target_url:
-                        # For external URL, we assume any line numbers provided by the user are valid
-                        match, ls, le = self._verify_line_content_from_url(
-                            original, verification_target_url
-                        )
-
-                    elif verification_target_commit and verification_target_path:  # Local ancestor
-                        if is_tol_percentage:
-                            repl_lines = get_file_content_at_commit(
-                                verification_target_commit, verification_target_path
-                            )
-                            if not repl_lines:
-                                print(
-                                    f"    ⚠️ Could not fetch content of '{verification_target_path}' in ancestor to calculate percentage. Try absolute tolerance."
-                                )
-                                continue
-                            num_lines = len(repl_lines)
-                            abs_custom_tolerance = int(num_lines * (tol_value / 100.0))
-                            self._vprint(
-                                f"    ℹ️ Using {tol_value}% of {num_lines} lines = {abs_custom_tolerance} lines tolerance for this check."
-                            )
-                        else:
-                            abs_custom_tolerance = tol_value
-                        print(f"\n🔄 Re-checking with tolerance {abs_custom_tolerance} lines…")
-                        match, ls, le = self._verify_line_content(
-                            original,
-                            verification_target_commit,
-                            verification_target_path,
-                            custom_tolerance=abs_custom_tolerance,
-                        )
-                    else:  # Should not happen
-                        print("    ⚠️ Cannot determine verification context for tolerance retry.")
-                        continue
-
-                    if match:
-                        print(
-                            f"✅ Match found with new tolerance at L{ls}"
-                            + (f"-L{le}" if le and le != ls else "")
-                            + "!"
-                        )
-                        return ls, le, False, None  # Resolved, no overriding URL
+                    if "-" in new_lines_input:
+                        ls_str, le_str = new_lines_input.split("-", 1); nl_ls, nl_le = int(ls_str), int(le_str)
+                        if nl_ls <= 0 or nl_le <= 0 or nl_le < nl_ls: raise ValueError("Invalid range.")
                     else:
-                        print("💥 No match found even with new tolerance.")
-                except ValueError as e:
-                    print(f"    Invalid tolerance: {e}")
-                    continue  # Re-prompt for line mismatch
+                        nl_ls = int(new_lines_input)
+                        if nl_ls <= 0: raise ValueError("Line must be positive.")
+                        nl_le = None
+                    current_ls, current_le = nl_ls, nl_le
+                    print(f"    Set line numbers to: L{current_ls}" + (f"-L{current_le}" if current_le else ""))
+                except ValueError as e: print(f"    Invalid line number format: {e}")
+                continue
+            elif menu_choice == "u":
+                new_url_input = input("    Enter new full URL: ").strip()
+                if not new_url_input.lower().startswith("https://"): print("    Invalid URL. Must start with https://"); continue
 
-            elif menu_choice == "m":
-                new_input = input(
-                    "    Enter new line numbers (e.g., 10 or 10-15) OR or any URL: "
-                ).strip()
-                if not new_input:
-                    print("    Input cannot be empty. Try again.")
-                    continue
+                gh_info = parse_github_blob_permalink(new_url_input)
+                parsed_ls_from_frag, parsed_le_from_frag = (gh_info[4], gh_info[5]) if gh_info else (None, None)
 
-                # For line mismatch, context_commit_for_path_extraction is None.
-                # Any URL input is treated as a full override URL.
-                status, extracted_value, val_ls, val_le = self._parse_and_confirm_manual_url_input(new_input, None)
+                if ancestor_commit and gh_info and \
+                   gh_info[0].lower() == self.git_owner.lower() and \
+                   self._normalize_repo_name(gh_info[1]) == self.git_repo.lower() and \
+                   gh_info[2] == ancestor_commit:
+                    print(f"    Parsed as URL for current ancestor commit ({ancestor_commit[:8]}).")
+                    current_is_external = False
+                    current_path_for_ancestor = gh_info[3]
+                    current_ls, current_le = parsed_ls_from_frag, parsed_le_from_frag
+                    print(f"    Set path to '{current_path_for_ancestor}' and lines from URL fragment.")
+                else:
+                    confirm_ext = input(f"    The URL points outside current ancestor context or is not a GitHub file URL. Use it anyway? (y/n): ").strip().lower()
+                    if confirm_ext == 'y':
+                        current_is_external = True
+                        current_external_url_base = new_url_input.split('#')[0].split('?')[0]
+                        current_path_for_ancestor = None
+                        current_ls, current_le = parsed_ls_from_frag, parsed_le_from_frag
 
-                if status == "url_confirmed":
-                    # val1_url_or_lines is the confirmed URL string.
-                    # val_ls, val_le are parsed from its fragment or None.
-                    return val_ls, val_le, False, extracted_value
-                elif status == "url_rejected":
-                    continue # Re-prompt for line mismatch
-                elif status == "not_a_url":
-                    # Input is treated as line numbers.
-                    try:
-                        if "-" in new_input:
-                            new_input_ls, new_input_le = new_input.split("-", 1)
-                            ls = int(new_input_ls)
-                            le = int(new_input_le)
-                            if ls <= 0 or le <= 0 or le < ls:
-                                raise ValueError("Invalid line range.")
-                        else:
-                            ls = int(new_input)
-                            if ls <= 0:
-                                raise ValueError("Line must be positive.")
-                            le = None  # Single line
-
-                        print("    Manually set line numbers for replacement.")
-                        return ls, le, False, None  # Resolved, no overriding URL
-                    except ValueError as e:
-                        print(
-                            f"    Invalid line number format: {e}. Expected e.g., '10' or '10-15'."
-                        )
-                        continue  # Re-prompt for line mismatch
-
+                        if original.line_start is not None: # Verify if original had lines
+                            verify_url_ext = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                            match, _, _ = self._verify_line_content_from_url(original, verify_url_ext)
+                            if not match:
+                                confirm_mismatch = input(f"    ⚠️ Content mismatch for this new URL. Use anyway? (y/n): ").strip().lower()
+                                if confirm_mismatch != 'y': print("    New URL not accepted. Try again."); continue # Re-prompt main menu
+                        print(f"    Set to external URL: {current_external_url_base} with lines from fragment.")
+                    else: print("    New URL not used.")
+                continue
+            elif menu_choice == "t" and ancestor_commit and current_path_for_ancestor and original.line_start is not None:
+                try:
+                    new_tol_str = input(f"    Enter new ABSOLUTE line shift tolerance (e.g., 5, 0 to disable): ").strip()
+                    temp_custom_abs_tolerance = int(new_tol_str)
+                    if temp_custom_abs_tolerance < 0: raise ValueError("Tolerance cannot be negative.")
+                    print(f"    Tolerance for next check set to: {temp_custom_abs_tolerance}")
+                except ValueError as e: print(f"    Invalid tolerance: {e}")
+                continue
             elif menu_choice == "c":
-                return None, None, False, None  # Cleared, resolved
+                current_ls, current_le = None, None
+                print("    Line numbers cleared for current candidate.")
+                continue
             elif menu_choice == "k":
-                return original.line_start, original.line_end, False, None  # Kept, resolved
+                final_url_to_keep: Optional[str] = None
+                if current_is_external and current_external_url_base:
+                    final_url_to_keep = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                    print(f"✅ Keeping external URL: {final_url_to_keep}")
+                elif ancestor_commit :
+                    final_url_to_keep = self._create_repl_permalink(original, ancestor_commit, current_path_for_ancestor, current_ls, current_le)
+                    print(f"✅ Keeping settings for ancestor: {final_url_to_keep}")
+                else: print("    ⚠️ Cannot keep settings, no valid target defined."); continue
+                return final_url_to_keep, False
             elif menu_choice == "a":
-                return current_ls, current_le, True, None  # Abort
+                print("    Aborting replacement for this permalink.")
+                return None, True # Abort
             else:
                 print("    Invalid choice. Try again.")
 
@@ -955,161 +818,56 @@ class GitPermalinkChecker:
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
             if original.url_path:  # Only if original permalink pointed to a file
-                (resolved_target_spec, resolved_ls, resolved_le, abort_path_res, target_type) = (
-                    self._prompt_user_to_resolve_url_path(
-                        original,
-                        ancestor_commit,
-                        candidate_path_for_ancestor or "",  # initial path
-                        candidate_repl_ls,
-                        candidate_repl_le,
-                    )
-                )
-                if abort_path_res:
-                    return "skip", None
-
-                if target_type == "user_provided_url":
-                    spec_repl_url = resolved_target_spec
-                    candidate_repl_ls = resolved_ls  # Lines from the user's URL
-                    candidate_repl_le = resolved_le
-                else:  # "path"
-                    candidate_path_for_ancestor = resolved_target_spec
-                    candidate_repl_ls = resolved_ls  # Lines for that path
-                    candidate_repl_le = resolved_le
-            # If original.url_path was None (e.g. tree link), we don't do this path resolution.
-            # spec_repl_url remains None, candidate_path_for_ancestor is None.
-
-        # --- Stage 2: Content Verification and Line Mismatch Resolution ---
-        repl_url: Optional[str] = None
-
-        if spec_repl_url:  # User provided a full URL
-            if (
-                original.line_start is None
-            ):  # Original has no lines, so no line verification needed for user URL
-                print(f"✅ Using user-provided URL: {spec_repl_url}")
-                repl_url = spec_repl_url  # Trust it as is
-            else:  # Original has lines, so verify against user URL
-                print(f"\n🔄 Verifying content against user-provided URL: {spec_repl_url}…")
-                match, v_ls, v_le = self._verify_line_content_from_url(original, spec_repl_url)
-                if match:
-                    repl_url = update_url_with_line_numbers(spec_repl_url, v_ls, v_le)
-                    print(f"✅ Content matches or accepted for user URL. Updated to: {repl_url}")
-                else:
-                    print("💥 Line content differs or could not be verified for the provided URL.")
-                    # Pass spec_repl_url as the context for line mismatch
-                    mls, mle, abort_mismatch, override_url = (
-                        self._prompt_user_to_resolve_line_mismatch(
-                            original,
-                            spec_repl_url,
-                            None,  # URL is primary context
-                            candidate_repl_ls,
-                            candidate_repl_le,
-                            is_external_source=True,
-                        )
-                    )
-                    if abort_mismatch:
-                        return "skip", None
-                    if override_url:  # User gave a new URL during line mismatch
-                        spec_repl_url = override_url
-                        # Re-verify this new URL (simplified: assume lines from it are now trusted, or re-verify)
-                        # For now, trust lines from override_url or use mls, mle
-                        repl_url = update_url_with_line_numbers(override_url, mls, mle)
-                        print(f"✅ Using new URL from manual input: {repl_url}")
-                    else:  # User gave new line numbers for the spec_repl_url
-                        repl_url = update_url_with_line_numbers(spec_repl_url, mls, mle)
-                        print(f"✅ Using manually adjusted lines for URL: {repl_url}")
-
-        elif ancestor_commit and candidate_path_for_ancestor and original.line_start is not None:
-            # Standard ancestor-based verification
-            if file_exists_at_commit(ancestor_commit, candidate_path_for_ancestor):
-                match, verified_ls, verified_le = self._verify_line_content(
-                    original, ancestor_commit, candidate_path_for_ancestor
-                )
-                if match:
-                    # Message about match success/shift
-                    orig_line_str = f"L{original.line_start}" + (
-                        f"-L{original.line_end}"
-                        if original.line_end and original.line_end != original.line_start
-                        else ""
-                    )
-                    new_line_str = f"L{verified_ls}" + (
-                        f"-L{verified_le}" if verified_le and verified_le != verified_ls else ""
-                    )
-                    if new_line_str == orig_line_str:
-                        print(f"✅ Line content matches at {orig_line_str}")
-                    else:
-                        print(
-                            f"✅ Line content matches, found at {new_line_str} in ancestor (original was {orig_line_str})"
-                        )
-                else:
-                    print("💥 Line content differs in ancestor, even with default tolerance.")
-                    mls, mle, abort_mismatch, override_url = (
-                        self._prompt_user_to_resolve_line_mismatch(
-                            original,
-                            ancestor_commit,
-                            candidate_path_for_ancestor,
-                            candidate_repl_ls,
-                            candidate_repl_le,
-                            is_external_source=False,
-                        )
-                    )
-                    if abort_mismatch:
-                        return "skip", None
-                    if override_url:  # User provided a full URL during line mismatch for ancestor
-                        # This switches context to user_provided_url
-                        # We should re-verify this new URL. For simplicity now, we'll trust it with its lines.
-                        repl_url = update_url_with_line_numbers(override_url, mls, mle)
-                        print(f"✅ Switched to user-provided URL: {repl_url}")
-                    else:  # User gave new lines for ancestor path
-                        candidate_repl_ls, candidate_repl_le = mls, mle
-            else:  # File for ancestor path doesn't exist (e.g. user kept a bad path)
-                print(
-                    f"❌ File '{candidate_path_for_ancestor}' does not exist in ancestor {ancestor_commit[:8]}."
-                )
-                # Simplified: if file doesn't exist, can't form a good replacement unless user clears lines.
-                # This part of the logic for "missing file but keep path" needs to be robust.
-                # For now, if path is bad, replacement URL will be too.
-
-            # Construct URL for ancestor path if not overridden by a full URL
-            if not repl_url:
-                repl_url = self._create_repl_permalink(
+                # Path resolution and line verification are now combined
+                spec_repl_url, aborted_resolution = self._resolve_replacement_interactively(
                     original,
-                    ancestor_commit,
-                    candidate_path_for_ancestor,
-                    candidate_repl_ls,
-                    candidate_repl_le,
+                    ancestor_commit
                 )
+                if aborted_resolution:
+                    return "skip", None
+                # spec_repl_url is now the fully resolved URL or None
+            elif not original.url_path: # E.g. tree link, direct replacement with ancestor
+                spec_repl_url = self._create_repl_permalink(original, ancestor_commit, None, None, None)
+            # If original.url_path was None (e.g. tree link), we don't do this path resolution.
 
-        elif ancestor_commit and not original.url_path:  # E.g. original was a /tree/ link
-            repl_url = self._create_repl_permalink(original, ancestor_commit, None, None, None)
+        elif not ancestor_commit: # No ancestor, resolution relies on user providing a full URL
+            self._vprint("No ancestor commit. User must provide a full URL or skip/tag.")
+            spec_repl_url, aborted_resolution = self._resolve_replacement_interactively(
+                original,
+                None # No ancestor context
+            )
+            if aborted_resolution:
+                return "skip", None
+
+        # At this point, spec_repl_url contains the candidate URL if resolution was successful
+        # or if it was a direct tree link replacement. Otherwise, it's None.
+        repl_url = spec_repl_url # Use this as the proposed replacement URL
 
         if repl_url:
             print(f"✨ Suggested replacement URL: {repl_url}")
-        elif not ancestor_commit:  # No ancestor, no user URL
+        elif not ancestor_commit and not spec_repl_url: # No ancestor, and user didn't provide a URL
             print(
-                "  ℹ️ No common ancestor found in the main branch, and no alternative URL provided."
+                "  ℹ️ No common ancestor found and no alternative URL provided through resolution."
             )
 
         # --- Stage 3: Final Action Prompt ---
         action, remember_this_choice = self._prompt_user_for_final_action(
             original,
-            repl_url,
+            repl_url, # Pass the resolved or formed URL
             is_commit_slated_for_tagging,
             auto_action_directive_for_commit=auto_action_directive_for_commit,
         )
 
         if remember_this_choice:
-            # Remember based on whether a replacement was possible or not
-            # This logic for remember_key might need refinement based on how "replace all" vs "tag all" should behave
-            # when user provides an external URL vs. using an ancestor.
-            # For now, if any replacement URL was formed, consider it "with_ancestor" context for remembering.
-            current_remember_key = (
-                "with_repl" if (ancestor_commit or spec_repl_url) else "without_repl"
-            )
+            current_remember_key = "with_repl" if repl_url else "without_repl"
             setattr(self, f"remembered_action_{current_remember_key}", remember_this_choice)
 
-        if action in ["replace", "replace_commit_group"]:
+        if action in ["replace", "replace_commit_group"] and repl_url:
             return action, repl_url
-        else:  # "tag", "untag", "skip", "skip_commit_group"
+        else:  # "tag", "untag", "skip", "skip_commit_group", or replace without URL (should not happen)
+            if action in ["replace", "replace_commit_group"] and not repl_url:
+                 self._vprint(f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Defaulting to skip.")
+                 return "skip", None
             return action, None
 
     def _perform_replacement(self, permalink: PermalinkInfo, repl_url: str) -> None:
@@ -1134,11 +892,8 @@ class GitPermalinkChecker:
                 print(
                     f"  ⚠️ Original URL not found in line {permalink.found_at_line} of {file_path}. Cannot replace."
                 )
-                # This might happen if the line was already modified or the URL parsing had an issue.
-                # Or if multiple identical permalinks were on the same line and one was already replaced.
                 return
 
-            # Replace only the first instance of the URL in the line to avoid issues if multiple identical URLs are present
             content[permalink.found_at_line - 1] = original_line.replace(permalink.url, repl_url, 1)
 
             with open(file_path, "w", encoding="utf-8") as f:
@@ -1168,12 +923,9 @@ class GitPermalinkChecker:
         auto_action_directive_for_remaining_in_commit: Optional[str] = None # "replace" or "skip"
 
         commit_is_currently_slated_for_tagging = False
-        # Initial slating based *only* on remembered choices.
-        # auto_fallback's effect will be handled per-permalink if a permalink cannot be replaced.
         if (ancestor_commit and self.remembered_action_with_repl == "tag") or \
                 (not ancestor_commit and self.remembered_action_without_repl == "tag"):
             commit_is_currently_slated_for_tagging = True
-            # If remembered action is tag, then we intend to tag the commit.
             pending_tag_for_commit = (commit_hash, commit_info)
             self._vprint(
                 f"  ℹ️ Commit {commit_hash[:8]} is initially slated for tagging due to remembered choice."
@@ -1192,7 +944,6 @@ class GitPermalinkChecker:
 
         for file_group_idx, file_path in enumerate(sorted_file_paths):
             permalinks_in_this_file = permalinks_by_file[file_path]
-            # Sort permalinks within this file by line number for consistent processing order
             permalinks_in_this_file.sort(key=lambda p_info: p_info.found_at_line)
 
             print(

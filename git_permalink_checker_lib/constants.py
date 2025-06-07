@@ -62,3 +62,9 @@ GITHUB_PERMALINK_RE = re.compile(
     re.IGNORECASE,
 )
 
+GITHUB_BLOB_PERMALINK_RE = re.compile(
+    # Matches: https://github.com/owner/repo/blob/ref/path/to/file.ext#L10-L20
+    # ref can be a commit hash, branch name, or tag name.
+    r"https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/([^#\s\?]+)(?:#L(\d+)(?:-L(\d+))?)?",
+    re.IGNORECASE,
+)

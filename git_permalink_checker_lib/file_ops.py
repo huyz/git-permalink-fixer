@@ -9,6 +9,7 @@ from .constants import (
     COMMON_EXTENSIONLESS_REPO_FILES,
     COMMON_TEXT_FILE_EXTENSIONS,
     GITHUB_PERMALINK_RE,
+    GITHUB_BLOB_PERMALINK_RE,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,3 +128,19 @@ def parse_github_permalink(
         found_in_file=Path(),  # Will be set by caller
         found_at_line=0,  # Will be set by caller
     )
+
+
+def parse_github_blob_permalink(url: str) -> Optional[Tuple[str, str, str, str, Optional[int], Optional[int]]]:
+    """
+    Parses any GitHub file URL (blob view) to extract owner, repo, ref (commit/branch),
+    path, and line numbers.
+    Returns: (owner, repo, ref, path, line_start, line_end) or None
+    """
+    match = GITHUB_BLOB_PERMALINK_RE.match(url)
+    if not match:
+        return None
+    owner, repo, ref, path_part, ls, le = match.groups()
+    # Sanitize path_part further if necessary, though regex tries to capture up to # or ?
+    # path_part might still contain query parameters if not starting with #
+    path_part = path_part.split('?')[0]
+    return owner, repo, ref, path_part, int(ls) if ls else None, int(le) if le else None

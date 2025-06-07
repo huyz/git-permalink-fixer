@@ -51,7 +51,7 @@ from typing import Dict, List, Optional, Tuple, Set
 from git_permalink_checker_lib.file_ops import (
     extract_permalinks_from_file_lines,
     should_skip_file_search,
-    parse_github_permalink,
+    parse_github_blob_permalink,
 )
 from git_permalink_checker_lib.git_utils import (
     get_repo_root,
@@ -68,7 +68,10 @@ from git_permalink_checker_lib.git_utils import (
     get_github_info_from_url,
 )
 from git_permalink_checker_lib.permalink import PermalinkInfo
-from git_permalink_checker_lib.web_utils import open_urls_in_browser
+from git_permalink_checker_lib.web_utils import (
+    open_urls_in_browser,
+    fetch_raw_github_content_from_url,
+)
 
 
 class GitPermalinkChecker:
@@ -224,11 +227,11 @@ class GitPermalinkChecker:
                 if log_as_skipped_due_to_gitignore and self.verbose:
                     # Peek into the gitignored file to see if it contains permalinks for logging purposes
                     try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f_ignored:
-                            lines_ignored = f_ignored.readlines()
+                        with open(file_path, "r", encoding="utf-8", errors="ignore") as ignored_file:
+                            lines = ignored_file.readlines()
                         # Use a temporary count, don't affect main found_count or detailed logging
                         permalinks_in_ignored_file, _, _ = extract_permalinks_from_file_lines(
-                            file_path, lines_ignored, self.repo_root, self.github_owner,
+                            file_path, lines, self.repo_root, self.github_owner,
                             self.github_repo, 0, self._normalize_repo_name,
                         )
                         if permalinks_in_ignored_file:
@@ -292,6 +295,22 @@ class GitPermalinkChecker:
             return (
                 f"https://github.com/{self.github_owner}/{self.github_repo}/tree/{new_commit_hash}"
             )
+
+    def _update_url_with_lines(self, base_url: str, line_start: Optional[int], line_end: Optional[int]) -> str:
+        """Updates a given URL with new line number fragments, removing old ones.
+        This only supports GitHub permalink format.
+        """
+        url_no_frag = base_url.split('#')[0]
+        if line_start is not None:
+            if line_end is not None and line_end != line_start:
+                return f"{url_no_frag}#L{line_start}-L{line_end}"
+            elif line_end is None and line_start > 0: # Single line
+                return f"{url_no_frag}#L{line_start}"
+            elif line_end is not None and line_end == line_start: # Single line specified as range
+                return f"{url_no_frag}#L{line_start}"
+            # If line_start is 0 or invalid, or line_end implies no range, don't add fragment.
+            # This case should ideally be handled by the caller ensuring line_start is valid if provided.
+        return url_no_frag # No valid line_start provided or it was meant to be cleared.
 
     def _verify_line_content(
         self,
@@ -384,6 +403,75 @@ class GitPermalinkChecker:
         except IndexError:
             return False, None, None
 
+    def _verify_line_content_from_url(
+        self,
+        original: PermalinkInfo,
+        replacement_candidate_url: str,
+    ) -> bool:
+        """
+        Verify line content against a replacement candidate URL.
+        Fetches content if it's a GitHub URL. Trusts non-GitHub URLs for content match.
+        Returns: match_found
+        """
+        if not original.url_path or original.line_start is None:
+            self._vprint(f"⚠️ Warning: Original permalink {original.url} has no line numbers or path, cannot verify content.")
+            return True
+
+        original_content_lines_list = get_file_content_at_commit(
+            original.commit_hash, original.url_path
+        )
+        if not original_content_lines_list:
+            self._vprint(f"⚠️ Warning: Could not get original content for {original.url} to verify against {replacement_candidate_url}")
+            return False
+
+        orig_start_idx = original.line_start - 1
+        orig_end_idx = (original.line_end or original.line_start) - 1
+        if not (0 <= orig_start_idx < len(original_content_lines_list) and \
+                0 <= orig_end_idx < len(original_content_lines_list) and \
+                orig_start_idx <= orig_end_idx):
+            return False
+
+        orig_content = [
+            line.strip() for line in original_content_lines_list[orig_start_idx : orig_end_idx + 1]
+        ]
+        if not orig_content:
+            return False
+        num_target_lines = len(orig_content)
+
+        repl_lines: Optional[List[str]] = None
+        repl_ls: Optional[int] = None
+
+        replacement_gh_info = parse_github_blob_permalink(replacement_candidate_url)
+        if replacement_gh_info:
+            _, _, _, _, repl_ls, _= replacement_gh_info
+            if repl_ls is None:
+                self._vprint(f"⚠️ Warning: GitHub URL {replacement_candidate_url} has no line numbers. Cannot perform specific line content verification.")
+                return True
+            self._vprint(f"Attempting to fetch content from GitHub URL: {replacement_candidate_url} for verification.")
+            repl_lines = fetch_raw_github_content_from_url(replacement_candidate_url)
+            if repl_lines is None:
+                self._vprint(f"⚠️ Warning: Failed to fetch content from {replacement_candidate_url}.")
+                return False
+        else:
+            self._vprint(f"⚠️ Warning: Verifying against non-GitHub or unparseable URL '{replacement_candidate_url}'. Assuming content matches based on user input.")
+            return True
+
+        # At this point, repl_lines is from a GitHub URL, and replacement_ls is not None.
+        try:
+            repl_start_idx = repl_ls - 1  # Expected start in the replacement content
+
+            if 0 <= repl_start_idx < len(repl_lines) and \
+                (repl_start_idx + num_target_lines) <= len(repl_lines):
+                repl_content = [
+                    line.strip() for line in repl_lines[
+                        repl_start_idx : repl_start_idx + num_target_lines
+                    ]
+                ]
+                return orig_content == repl_content
+            return False
+        except IndexError:
+            return False
+
     def _prompt_user_to_resolve_url_path(
         self,
         original: PermalinkInfo,
@@ -391,10 +479,12 @@ class GitPermalinkChecker:
         initial_path_to_check: str,
         initial_ls: Optional[int],
         initial_le: Optional[int],
-    ) -> Tuple[Optional[str], Optional[int], Optional[int], bool]:
+    ) -> Tuple[str, Optional[int], Optional[int], bool, str]:
         """
         Interactively resolve the file path for replacement if it's missing in the ancestor.
-        Returns: (resolved_file_path, resolved_ls, resolved_le, should_abort_permalink)
+        Returns: (resolved_target_spec, resolved_ls, resolved_le, should_abort, target_type)
+        target_spec is a file path string or a full URL string.
+        target_type is "path", "user_provided_url".
         """
         path_to_check = initial_path_to_check
         current_ls, current_le = initial_ls, initial_le
@@ -435,25 +525,39 @@ class GitPermalinkChecker:
                 is_url_attempt = new_input.lower().startswith("https://")
                 if is_url_attempt:
                     # Attempt to parse as a GitHub URL
-                    parsed_info_from_url = parse_github_permalink(
-                        new_input, self.github_owner, self.github_repo, self._normalize_repo_name
-                    )
-                    if parsed_info_from_url:
-                        # Successfully parsed as a URL for *this* repo
-                        if parsed_info_from_url.url_path: # It must point to a file
-                            print(f"    Parsed as URL. Using file path: '{parsed_info_from_url.url_path}'")
-                            path_to_check = parsed_info_from_url.url_path
-                            # Update line numbers if present in the URL, otherwise clear them
-                            current_ls = parsed_info_from_url.line_start
-                            current_le = parsed_info_from_url.line_end
+                    repl_gh_info = parse_github_blob_permalink(new_input)
+                    if repl_gh_info: # It's some GitHub blob URL
+                        gh_owner, gh_repo, gh_ref, gh_path, gh_ls, gh_le = repl_gh_info
+                        is_current_repo_link = (gh_owner.lower() == self.github_owner.lower() and \
+                                                self._normalize_repo_name(gh_repo) == self.github_repo.lower())
+                        is_ancestor_commit_link = (is_current_repo_link and gh_ref == ancestor_commit)
+
+                        if is_ancestor_commit_link and gh_path:
+                            print(f"    Parsed as URL for current ancestor. Using file path: '{gh_path}'")
+                            path_to_check = gh_path
+                            current_ls = gh_ls if gh_ls is not None else original.line_start
+                            current_le = gh_le if gh_le is not None else original.line_end
+                            # Continue the while loop to check file_exists_at_commit with this new path
+                            continue
                         else:
-                            # URL parsed for this repo, but no file_path (e.g. base tree/commit link)
-                            print(f"    The GitHub URL '{new_input}' does not point to a specific file. Please provide a URL that includes a file path, or enter a file path directly.")
+                            # External GitHub URL or different ref, or no path
+                            confirm_external = input(f"    The GitHub URL points to '{gh_owner}/{gh_repo}/blob/{gh_ref}'. Use this URL '{new_input}' directly as the replacement target? (y/n): ").strip().lower()
+                            if confirm_external == 'y':
+                                return new_input, gh_ls, gh_le, False, "user_provided_url"
+                            else:
+                                continue # Re-prompt for manual input
+                    else: # Arbitrary URL (not parseable as GitHub blob)
+                        confirm_arbitrary = input(f"    The input '{new_input}' is not a recognized GitHub file URL. Use this exact URL as the replacement target? (y/n): ").strip().lower()
+                        if confirm_arbitrary == 'y':
+                            arb_ls, arb_le = None, None
+                            match_lines_frag = re.search(r"#L(\d+)(?:-L(\d+))?$", new_input)
+                            if match_lines_frag:
+                                arb_ls = int(match_lines_frag.group(1))
+                                if match_lines_frag.group(2):
+                                    arb_le = int(match_lines_frag.group(2))
+                            return new_input, arb_ls, arb_le, False, "user_provided_url"
+                        else:
                             continue # Re-prompt for manual input
-                    else:
-                        # Input looked like a URL, but parsing failed (malformed or wrong repo)
-                        print(f"    The input '{new_input}' is not a valid GitHub URL for the current repository ({self.github_owner}/{self.github_repo}), or it's malformed. Please provide a valid URL for this repository or a file path.")
-                        continue # Re-prompt for manual input
                 else: # Input is treated as a file path (relative or absolute)
                     input_path_obj = Path(new_input)
                     new_relative_path_str: Optional[str] = None
@@ -474,32 +578,39 @@ class GitPermalinkChecker:
                         # Line numbers (current_ls, current_le) are not modified here by path input;
                         # they retain values from original permalink or previous URL input.
                 continue # Loop will re-evaluate existence
-
             elif menu_choice == "k":
                 print(f"    Keeping path '{path_to_check}' for replacement URL, though it's missing in ancestor.")
-                return path_to_check, current_ls, current_le, False  # Keep the path, don't abort
+                return path_to_check, current_ls, current_le, False, "path"
 
             elif menu_choice == "a":
                 print("    Aborting replacement for this permalink.")
-                return path_to_check, current_ls, current_le, True # Abort
+                return initial_path_to_check, initial_ls, initial_le, True, "path" # Abort
             else:
                 print("    Invalid choice. Try again.")
 
-        return path_to_check, current_ls, current_le, False # File exists, don't abort
+        return path_to_check, current_ls, current_le, False, "path" # File exists, don't abort
 
     def _prompt_user_to_resolve_line_mismatch(
         self,
         original: PermalinkInfo,
-        ancestor_commit: str,
-        replacement_url_path: str, # Already confirmed to exist in ancestor
+        # Context for verification - either local ancestor or an external URL
+        ancestor_commit_or_external_url: str, # If is_external_source, this is the URL
+        replacement_url_path_or_none: Optional[str], # Path if local, None if external_url is primary
         initial_ls: Optional[int],
         initial_le: Optional[int],
-    ) -> Tuple[Optional[int], Optional[int], bool]:
+        is_external_source: bool = False,
+    ) -> Tuple[Optional[int], Optional[int], bool, Optional[str]]:
         """
         Interactively resolve line number mismatches.
-        Returns: (resolved_ls, resolved_le, should_abort_permalink)
+        Returns: (resolved_ls, resolved_le, should_abort_permalink, overriding_url_if_provided)
+        The overriding_url_if_provided is a full URL string if the user chose to replace with a new URL.
         """
         current_ls, current_le = initial_ls, initial_le
+        # The primary target for verification/replacement:
+        verification_target_url = ancestor_commit_or_external_url if is_external_source else None
+        verification_target_commit = None if is_external_source else ancestor_commit_or_external_url
+        verification_target_path = None if is_external_source else replacement_url_path_or_none
+
         while True:
             print("\n❓ LINE MISMATCH RESOLUTION:")
             print("  o) Open original URL (and attempted replacement) in browser")
@@ -511,9 +622,15 @@ class GitPermalinkChecker:
             menu_choice = input("\nSelect resolution for lines (o,l,m,c,k,a): ").strip().lower()
 
             if menu_choice == "o":
-                broken_replacement_url = self._create_replacement_permalink(
-                    original, ancestor_commit, replacement_url_path, current_ls, current_le
-                )
+                if is_external_source and verification_target_url:
+                    broken_replacement_url = self._update_url_with_lines(verification_target_url, current_ls, current_le)
+                elif verification_target_commit and verification_target_path:
+                    broken_replacement_url = self._create_replacement_permalink(
+                        original, verification_target_commit, verification_target_path, current_ls, current_le
+                    )
+                else: # Should not happen
+                    broken_replacement_url = "ERROR_COULD_NOT_FORM_URL"
+
                 urls_to_open = [
                     ("original URL", original.url),
                     ("(likely broken) replacement URL", broken_replacement_url)
@@ -528,27 +645,34 @@ class GitPermalinkChecker:
                         print("    Input cannot be empty. Try again.")
                         continue
 
-                    is_percentage, val = GitPermalinkChecker._parse_tolerance_input(new_tol_str)
+                    is_percentage_tol, val_tol = GitPermalinkChecker._parse_tolerance_input(new_tol_str)
 
-                    if is_percentage:
-                        # Fetch replacement content lines to calculate absolute tolerance
-                        replacement_content_lines_for_calc = get_file_content_at_commit(ancestor_commit, replacement_url_path)
-                        if not replacement_content_lines_for_calc:
-                            print(f"    ⚠️ Could not fetch content of '{replacement_url_path}' in ancestor to calculate percentage. Try absolute tolerance.")
-                            continue
-                        num_lines = len(replacement_content_lines_for_calc)
-                        abs_custom_tolerance = int(num_lines * (val / 100.0))
-                        self._vprint(f"    ℹ️ Using {val}% of {num_lines} lines = {abs_custom_tolerance} lines tolerance for this check.")
-                    else:
-                        abs_custom_tolerance = val
+                    if is_external_source and verification_target_url:
+                        # For external URL, we assume any line numbers provided by the user are valid
+                        match, ls, le = self._verify_line_content_from_url(original, verification_target_url)
 
-                    print(f"\n🔄 Re-checking with tolerance {abs_custom_tolerance} lines...")
-                    match, ls, le = self._verify_line_content(original, ancestor_commit, replacement_url_path, custom_tolerance=abs_custom_tolerance)
+                    elif verification_target_commit and verification_target_path : # Local ancestor
+                        if is_percentage_tol:
+                            replacement_content_lines_for_calc = get_file_content_at_commit(verification_target_commit, verification_target_path)
+                            if not replacement_content_lines_for_calc:
+                                print(f"    ⚠️ Could not fetch content of '{verification_target_path}' in ancestor to calculate percentage. Try absolute tolerance.")
+                                continue
+                            num_lines = len(replacement_content_lines_for_calc)
+                            abs_custom_tolerance = int(num_lines * (val_tol / 100.0))
+                            self._vprint(f"    ℹ️ Using {val_tol}% of {num_lines} lines = {abs_custom_tolerance} lines tolerance for this check.")
+                        else:
+                            abs_custom_tolerance = val_tol
+                        print(f"\n🔄 Re-checking with tolerance {abs_custom_tolerance} lines...")
+                        match, ls, le = self._verify_line_content(original, verification_target_commit, verification_target_path, custom_tolerance=abs_custom_tolerance)
+                    else: # Should not happen
+                        print("    ⚠️ Cannot determine verification context for tolerance retry.")
+                        continue
+
                     if match:
                         print(f"✅ Match found with new tolerance at L{ls}" + (f"-L{le}" if le and le != ls else "") + "!")
-                        return ls, le, False # Resolved
+                        return ls, le, False, None # Resolved, no overriding URL
                     else:
-                        print(f"💥 No match found even with tolerance {abs_custom_tolerance} lines.")
+                        print(f"💥 No match found even with new tolerance.")
                 except ValueError as e:
                     print(f"    Invalid tolerance: {e}")
                     continue # Re-prompt for line mismatch
@@ -561,20 +685,28 @@ class GitPermalinkChecker:
 
                 is_url_attempt = new_input.lower().startswith("https://")
                 if is_url_attempt:
-                    parsed_info_from_url = parse_github_permalink(new_input, self.github_owner, self.github_repo, self._normalize_repo_name)
-                    if parsed_info_from_url:
-                        if parsed_info_from_url.url_path:
-                            if parsed_info_from_url.url_path == replacement_url_path:
-                                self._vprintf(f"    Parsed as URL for file '{replacement_url_path}'. Using line numbers from URL.")
-                                return parsed_info_from_url.line_start, parsed_info_from_url.line_end, False # Resolved
-                            else:
-                                print(f"    ⚠️ The GitHub URL points to a different file ('{parsed_info_from_url.url_path}').")
+                    parsed_new_gh_url_info = parse_any_github_file_url(new_input)
+                    if parsed_new_gh_url_info: # New input is a GitHub URL
+                        new_gh_owner, new_gh_repo, new_gh_ref, new_gh_path, new_gh_ls, new_gh_le = parsed_new_gh_url_info
+                        # Check if this new URL is different from the current context
+                        # (e.g., different from external_source_url or different from local ancestor's file)
+                        # This check can be complex. For now, just ask for confirmation.
+                        confirm_new_url = input(f"    You provided a new GitHub URL. Use '{new_input}' as the replacement target? (y/n): ").strip().lower()
+                        if confirm_new_url == 'y':
+                            return new_gh_ls, new_gh_le, False, new_input # Resolved with new overriding URL
                         else:
-                            # URL parsed for this repo, but no file_path (e.g. base tree/commit link)
-                            print(f"    ⚠️ The GitHub URL '{new_input}' does not point to a specific file.");
-                    else:
-                        print(f"    ⚠️ The input '{new_input}' is not a valid GitHub URL for the current repository ({self.github_owner}/{self.github_repo}), or it's malformed.")
-                    continue # Re-prompt for line mismatch
+                            continue # Re-prompt for line mismatch
+                    else: # New input is an arbitrary URL
+                        confirm_new_arbitrary_url = input(f"    The input '{new_input}' is not a recognized GitHub file URL. Use this exact URL as the replacement target? (y/n): ").strip().lower()
+                        if confirm_new_arbitrary_url == 'y':
+                            arb_ls, arb_le = None, None
+                            match_lines_frag = re.search(r"#L(\d+)(?:-L(\d+))?$", new_input)
+                            if match_lines_frag:
+                                arb_ls = int(match_lines_frag.group(1))
+                                if match_lines_frag.group(2): arb_le = int(match_lines_frag.group(2))
+                            return arb_ls, arb_le, False, new_input # Resolved with new overriding URL
+                        else:
+                            continue # Re-prompt for line mismatch
                 else: # Input is treated as line numbers
                     try:
                         if '-' in new_input:
@@ -590,26 +722,25 @@ class GitPermalinkChecker:
                             new_le_manual = None # Single line
 
                         print("    Manually set line numbers for replacement.")
-                        return new_ls_manual, new_le_manual, False # Resolved
+                        return new_ls_manual, new_le_manual, False, None # Resolved, no overriding URL
                     except ValueError as e:
                         print(f"    Invalid line number format: {e}. Expected e.g., '10' or '10-15'.")
                         continue # Re-prompt for line mismatch
 
-
             elif menu_choice == 'c':
-                return None, None, False # Cleared, resolved
+                return None, None, False, None # Cleared, resolved
             elif menu_choice == 'k':
-                return original.line_start, original.line_end, False # Kept, resolved
+                return original.line_start, original.line_end, False, None # Kept, resolved
             elif menu_choice == 'a':
-                return current_ls, current_le, True # Abort
+                return current_ls, current_le, True, None # Abort
             else:
                 print("    Invalid choice. Try again.")
 
     @staticmethod
     def _prompt_user_for_final_action(
         original: PermalinkInfo,
-        has_ancestor: bool,
-        replacement_url: Optional[str], # Only if has_ancestor is true
+        has_ancestor: bool, # True if ancestor_commit exists (even if user_provided_full_replacement_url is set)
+        replacement_url: Optional[str], # The fully formed candidate replacement URL
         is_commit_slated_for_tagging: bool,
     ) -> Optional[tuple[str, Optional[str]]]:
         """
@@ -617,41 +748,46 @@ class GitPermalinkChecker:
         Returns: (action_string, value_to_remember_if_any)
         """
         print("\n❓ ACTIONS:")
-        print(f"  o) Open URL(s) in browser{' (original & replacement)' if has_ancestor else ' (original only)'}")
+        print(f"  o) Open URL(s) in browser{' (original & replacement)' if replacement_url else ' (original only)'}")
 
-        if has_ancestor:
+        # Replacement is offered if a replacement_url has been successfully constructed/verified
+        if replacement_url:
             print("  r) Replace with suggested URL (i.e., update reference)")
-            print("    ra) Replace ALL from now on (for prompts with ancestors)")
+            print("    ra) Replace ALL from now on (for prompts with ancestors/valid replacements)") # Make wording general
 
         if is_commit_slated_for_tagging:
             print("  -t) UNTAG this commit")
         else:
             print("  t) Tag original commit (i.e., preserve exact permalink)")
-            print(f"    ta) Tag ALL from now on (for prompts {'with' if has_ancestor else 'without'} ancestors)")
+            # Tag all depends on whether a replacement was possible or not (has_ancestor is a proxy)
+            tag_all_context_msg = "with" if has_ancestor else "without" # Or "with valid replacement" vs "without"
+            print(f"    ta) Tag ALL from now on (for prompts {tag_all_context_msg} valid replacements/ancestors)")
 
         print("  s) Skip this permalink")
-        print(f"    sa) Skip ALL from now on (for prompts {'with' if has_ancestor else 'without'} ancestors)")
+        skip_all_context_msg = "with" if has_ancestor else "without"
+        print(f"    sa) Skip ALL from now on (for prompts {skip_all_context_msg} valid replacements/ancestors)")
 
         while True:
             action: Optional[str] = None
             remember_this_choice: Optional[str] = None
 
-            prompt_options = "o,"
-            if has_ancestor:
-                prompt_options += "r,ra,"
-            prompt_options += "-t," if is_commit_slated_for_tagging else "t,ta,"
-            prompt_options += "s,sa"
-            menu_choice = input(f"\nSelect action ({prompt_options}): ").strip().lower()
+            prompt_options_list = ["o"]
+            if replacement_url:
+                prompt_options_list.extend(["r", "ra"])
+            prompt_options_list.append("-t" if is_commit_slated_for_tagging else "t")
+            prompt_options_list.append("ta") # Always offer tag all, context handled by remember key
+            prompt_options_list.extend(["s", "sa"])
+            menu_choice = input(f"\nSelect action ({','.join(prompt_options_list)}): ").strip().lower()
 
             if menu_choice == "o":
                 urls_to_open_list = [("original URL", original.url)]
-                if has_ancestor and replacement_url:
+                if replacement_url:
                     urls_to_open_list.append(("suggested replacement URL", replacement_url))
                 open_urls_in_browser(urls_to_open_list)
                 continue
-            elif menu_choice == "r" and has_ancestor:
+            elif menu_choice == "r" and replacement_url:
                 action = "replace"
-            elif menu_choice == "ra" and has_ancestor and replacement_url:
+            elif menu_choice == "ra" and replacement_url: # Remember based on if ancestor/replacement was possible
                 action, remember_this_choice = "replace", "replace"
             elif menu_choice == "t" and not is_commit_slated_for_tagging:
                 action = "tag"
@@ -673,215 +809,190 @@ class GitPermalinkChecker:
     def _prompt_user_for_replacement(
         self,
         original: PermalinkInfo,
-        ancestor_commit: Optional[str],
-        file_path: Path, # File where permalink is found, for context
+        ancestor_commit: Optional[str], # For context, even if user provides external URL
+        file_path: Path,
         index: int,
         total: int,
-        is_commit_slated_for_tagging: bool, # NEW: Is the parent commit already marked for tagging?
-    ) -> Tuple[str, Optional[str], Optional[int], Optional[int]]:
+        is_commit_slated_for_tagging: bool,
+    ) -> Tuple[str, Optional[str]]: # Returns (action_str, final_replacement_url_if_action_is_replace)
         """
         Prompt user to confirm replacement permalink.
-        Returns a tuple: (
-            action_str,
-            effective_replacement_url_path,
-            new_line_start_for_replacement,
-            new_line_end_for_replacement).
-        The line numbers are only relevant if action_str is "replace".
+        Returns a tuple: (action_str, final_replacement_url_string).
+        The URL string is only present if action_str is "replace".
         """
-        has_ancestor = ancestor_commit is not None
-        remembered_choice_key = "with_ancestor" if has_ancestor else "no_ancestor"
+        # Determine remembered choice key based on whether a viable replacement path (ancestor or user URL) exists.
+        # This is a simplification; a more nuanced key might be needed if auto-replace vs auto-tag logic gets complex here.
+        # For now, `ancestor_commit` is a proxy for "replacement might be possible".
+        remembered_choice_key = "with_ancestor" if ancestor_commit else "no_ancestor"
         remembered_choice = getattr(self, f"remembered_choice_{remembered_choice_key}")
 
         if remembered_choice:
-            # If choice is remembered, we assume it implies how to handle lines too (e.g., auto-replace logic)
             self._vprint(f"    🤖 Using remembered choice: {remembered_choice}")
-            return ( # Return the remembered action, and default path/lines
-                remembered_choice,
-                original.url_path,
-                original.line_start,
-                original.line_end,
-            )  # Default path and lines if remembered
+            if remembered_choice == "replace" and ancestor_commit:
+                # Auto-path for remembered 'replace': Use original path with ancestor, verify lines.
+                # This simplified auto-path doesn't handle remembered arbitrary URLs.
+                # For a remembered 'replace', we assume it implies using the ancestor.
+                # A more complex system would store the type of remembered replacement.
+                verified_ls, verified_le = original.line_start, original.line_end
+                if original.url_path and original.line_start:
+                    if file_exists_at_commit(ancestor_commit, original.url_path):
+                        match, new_ls, new_le = self._verify_line_content(original, ancestor_commit, original.url_path)
+                        if match: verified_ls, verified_le = new_ls, new_le
+                final_url = self._create_replacement_permalink(original, ancestor_commit, original.url_path, verified_ls, verified_le)
+                return remembered_choice, final_url
+            elif remembered_choice == "tag":
+                return remembered_choice, None
+            elif remembered_choice == "skip":
+                return remembered_choice, None
+            # If remembered choice is something else or context doesn't fit, fall through to interactive.
 
         index_message = f"Permalink #{index + 1}/{total} for {original.commit_hash[:8]}"
         print(f"\n    [*] {index_message} {'- ' * ((75 - len(index_message)) // 2)}")
         print("      🚧 PERMALINK PROTECTION NEEDED")
         print()
-        print(
-            f"📄 Found in: {original.found_in_file.relative_to(self.repo_root)}:{original.found_at_line}"
-        )
+        print(f"📄 Found in: {original.found_in_file.relative_to(self.repo_root)}:{original.found_at_line}")
         print(f"🔗 Original URL: {original.url}")
         self._vprint(f"⛓️‍💥 Original commit: {original.commit_hash[:8]} (not in {self.main_branch})")
         if is_commit_slated_for_tagging:
             print(f"🏷️ Commit {original.commit_hash[:8]} is currently slated to be TAGGED.")
         print()
 
-        replacement_url: Optional[str] = None  # Will be set if ancestor exists
-        # These will store the line numbers to be used in the *final* replacement URL
-        current_replacement_ls: Optional[int] = original.line_start
-        current_replacement_le: Optional[int] = original.line_end
-        # This will be the file path used for the replacement link.
-        effective_replacement_url_path: Optional[str] = original.url_path
+        # These store the current best candidate for replacement
+        candidate_replacement_url_str: Optional[str] = None # A fully formed URL if user provides one
+        # Or, if using ancestor:
+        candidate_path_for_ancestor: Optional[str] = original.url_path
+        candidate_ls_for_replacement: Optional[int] = original.line_start
+        candidate_le_for_replacement: Optional[int] = original.line_end
 
-        if has_ancestor and ancestor_commit:
+        # --- Stage 1: Resolve File Path/URL for Replacement ---
+        if ancestor_commit: # Only offer path/URL resolution if an ancestor context exists
             ancestor_info = get_commit_info(ancestor_commit)
             if ancestor_info:
-                self._vprint(
-                    f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}"
-                )
+                self._vprint(f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}")
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
-            # --- Stage 1: Resolve File Path for Replacement, if original had one ---
-            if original.url_path:
-                ( # Ensure file_exists_at_commit is called with self if it's a method
-                    effective_replacement_url_path,
-                    current_replacement_ls,
-                    current_replacement_le,
-                    abort_url_path_resolution,
+            if original.url_path: # Only if original permalink pointed to a file
+                (
+                    resolved_target_spec, resolved_ls, resolved_le,
+                    abort_path_res, target_type
                 ) = self._prompt_user_to_resolve_url_path(
-                    original,
-                    ancestor_commit,
-                    original.url_path, # initial path to check (this needs to be self.file_exists_at_commit)
-                    current_replacement_ls,
-                    current_replacement_le,
+                    original, ancestor_commit,
+                    candidate_path_for_ancestor or "", # initial path
+                    candidate_ls_for_replacement, candidate_le_for_replacement
                 )
-                if abort_url_path_resolution:
-                    return "skip", effective_replacement_url_path, None, None
+                if abort_path_res: return "skip", None
 
-            # Content verification and sub-prompt logic
-            if (
-                effective_replacement_url_path and original.line_start is not None
-            ):  # Only verify if lines are expected and we have a path
-                if file_exists_at_commit(ancestor_commit, effective_replacement_url_path):
-                    match_found, verified_ls, verified_le = self._verify_line_content(
-                        original, ancestor_commit, effective_replacement_url_path
-                    )
-                    if match_found:
-                        current_replacement_ls = verified_ls
-                        current_replacement_le = verified_le
-                        original_line_range_str = f"L{original.line_start}"
-                        if original.line_end and original.line_end != original.line_start:
-                            original_line_range_str += f"-L{original.line_end}"
+                if target_type == "user_provided_url":
+                    candidate_replacement_url_str = resolved_target_spec
+                    candidate_ls_for_replacement = resolved_ls # Lines from the user's URL
+                    candidate_le_for_replacement = resolved_le
+                else: # "path"
+                    candidate_path_for_ancestor = resolved_target_spec
+                    candidate_ls_for_replacement = resolved_ls # Lines for that path
+                    candidate_le_for_replacement = resolved_le
+            # If original.url_path was None (e.g. tree link), we don't do this path resolution.
+            # candidate_replacement_url_str remains None, candidate_path_for_ancestor is None.
 
-                        if verified_ls == original.line_start and verified_le == original.line_end:
-                            print(f"✅ Line content matches at {original_line_range_str}")
-                        else:
-                            verified_line_range_str = f"L{verified_ls}"
-                            if (
-                                verified_le and verified_le != verified_ls
-                            ):  # verified_le can be None
-                                verified_line_range_str += f"-L{verified_le}"
-                            print(
-                                f"✅ Line content matches, found at {verified_line_range_str} in ancestor (original was {original_line_range_str})"
-                            )
-                    else:
-                        print("💥 Line content differs in ancestor, even with default tolerance.")
-                        (
-                            current_replacement_ls,
-                            current_replacement_le,
-                            aborted_line_mismatch,
-                        ) = self._prompt_user_to_resolve_line_mismatch(
-                            original,
-                            ancestor_commit,
-                            effective_replacement_url_path,
-                            current_replacement_ls,
-                            current_replacement_le,
-                        )
-                        if aborted_line_mismatch:
-                            return "skip", effective_replacement_url_path, None, None
+        # --- Stage 2: Content Verification and Line Mismatch Resolution ---
+        final_verified_replacement_url: Optional[str] = None
+
+        if candidate_replacement_url_str: # User provided a full URL
+            if original.line_start is None: # Original has no lines, so no line verification needed for user URL
+                print(f"✅ Using user-provided URL: {candidate_replacement_url_str}")
+                final_verified_replacement_url = candidate_replacement_url_str # Trust it as is
+            else: # Original has lines, so verify against user URL
+                print(f"\n🔄 Verifying content against user-provided URL: {candidate_replacement_url_str}...")
+                match, v_ls, v_le = self._verify_line_content_from_url(original, candidate_replacement_url_str)
+                if match:
+                    candidate_ls_for_replacement, candidate_le_for_replacement = v_ls, v_le
+                    final_verified_replacement_url = self._update_url_with_lines(candidate_replacement_url_str, v_ls, v_le)
+                    print(f"✅ Content matches or accepted for user URL. Updated to: {final_verified_replacement_url}")
                 else:
-                    print(
-                        f"❌ File '{effective_replacement_url_path}' does not exist in suggested ancestor commit {ancestor_commit[:8]}"
+                    print("💥 Line content differs or could not be verified for the provided URL.")
+                    # Pass candidate_replacement_url_str as the context for line mismatch
+                    mls, mle, abort_mismatch, override_url = self._prompt_user_to_resolve_line_mismatch(
+                        original, candidate_replacement_url_str, None, # URL is primary context
+                        candidate_ls_for_replacement, candidate_le_for_replacement, is_external_source=True
                     )
-                    # This sub-prompt is for when lines were expected, but the file (chosen via 'k' or initial bad path) is missing.
-                    while True:
-                        # This is the existing "MISSING FILE RESOLUTION" but it's actually "LINES FOR MISSING FILE"
-                        print("\nMISSING FILE RESOLUTION:")
-                        print("  m. MANUALLY enter new line numbers (assumes file path is still desired)")
-                        print(
-                            "  c. CLEAR line numbers from replacement URL (keeps file path if present)"
-                        )
-                        print(
-                            "  k. KEEP original line numbers in replacement URL (file path and lines may be invalid)"
-                        )
-                        print("  a. ABORT replacement (skip this permalink for now)")
-                        menu_choice = (
-                            input("\nSelect resolution for lines/file (m,c,k,a): ").strip().lower()
-                        )
-                        # Manual entry logic is similar to above, simplified as file context is missing
-                        if menu_choice == "m":  # Simplified manual entry
-                            try:
-                                ls_str = input(
-                                    "    Enter new START line number (if known, or 0 to clear): "
-                                )
-                                new_ls_manual = int(ls_str)
-                                if new_ls_manual < 0:
-                                    raise ValueError("Line number cannot be negative.")
-                                current_replacement_ls = (
-                                    new_ls_manual if new_ls_manual > 0 else None
-                                )
-                                current_replacement_le = None  # Assume single line or cleared
-                                if (
-                                    current_replacement_ls
-                                    and original.line_end
-                                    and original.line_start
-                                    and original.line_end > original.line_start
-                                ):  # if original was range
-                                    le_str = input(
-                                        "    Enter new END line number (or Enter for single line): "
-                                    ).strip()
-                                    if le_str:
-                                        current_replacement_le = int(le_str)
-                                print("    Manually set line numbers for replacement.")
-                                break
-                            except ValueError as e:
-                                print(f"    Invalid input: {e}")
-                        elif menu_choice == "c":
-                            current_replacement_ls = None
-                            current_replacement_le = None
-                            print("    Line numbers cleared.")
-                            break
-                        elif menu_choice == "k":
-                            current_replacement_ls = original.line_start
-                            current_replacement_le = original.line_end
-                            print("    Original lines kept.")
-                            break  # This keeps original lines, path is effective_replacement_url_path
-                        elif menu_choice == "a":
-                            print("    Aborting.")
-                            return "skip", effective_replacement_url_path, None, None
-                        else:
-                            print("    Invalid choice.")
+                    if abort_mismatch: return "skip", None
+                    if override_url: # User gave a new URL during line mismatch
+                        candidate_replacement_url_str = override_url
+                        # Re-verify this new URL (simplified: assume lines from it are now trusted, or re-verify)
+                        # For now, trust lines from override_url or use mls, mle
+                        final_verified_replacement_url = self._update_url_with_lines(override_url, mls, mle)
+                        print(f"✅ Using new URL from manual input: {final_verified_replacement_url}")
+                    else: # User gave new line numbers for the candidate_replacement_url_str
+                        final_verified_replacement_url = self._update_url_with_lines(candidate_replacement_url_str, mls, mle)
+                        print(f"✅ Using manually adjusted lines for URL: {final_verified_replacement_url}")
 
-            # Create/update the replacement_url with potentially modified line numbers
-            replacement_url = self._create_replacement_permalink(
-                original,  # For original URL type (blob/tree)
-                ancestor_commit,
-                effective_replacement_url_path,  # The resolved file path
-                current_replacement_ls,  # The resolved line start
-                current_replacement_le,  # The resolved line end
+        elif ancestor_commit and candidate_path_for_ancestor and original.line_start is not None:
+            # Standard ancestor-based verification
+            if file_exists_at_commit(ancestor_commit, candidate_path_for_ancestor):
+                match, v_ls, v_le = self._verify_line_content(original, ancestor_commit, candidate_path_for_ancestor)
+                if match:
+                    candidate_ls_for_replacement, candidate_le_for_replacement = v_ls, v_le
+                    # Message about match success/shift
+                    orig_line_str = f"L{original.line_start}" + (f"-L{original.line_end}" if original.line_end and original.line_end != original.line_start else "")
+                    new_line_str = f"L{v_ls}" + (f"-L{v_le}" if v_le and v_le != v_ls else "")
+                    if new_line_str == orig_line_str: print(f"✅ Line content matches at {orig_line_str}")
+                    else: print(f"✅ Line content matches, found at {new_line_str} in ancestor (original was {orig_line_str})")
+                else:
+                    print("💥 Line content differs in ancestor, even with default tolerance.")
+                    mls, mle, abort_mismatch, override_url = self._prompt_user_to_resolve_line_mismatch(
+                        original, ancestor_commit, candidate_path_for_ancestor,
+                        candidate_ls_for_replacement, candidate_le_for_replacement, is_external_source=False
+                    )
+                    if abort_mismatch: return "skip", None
+                    if override_url: # User provided a full URL during line mismatch for ancestor
+                        # This switches context to user_provided_url
+                        # We should re-verify this new URL. For simplicity now, we'll trust it with its lines.
+                        final_verified_replacement_url = self._update_url_with_lines(override_url, mls, mle)
+                        print(f"✅ Switched to user-provided URL: {final_verified_replacement_url}")
+                    else: # User gave new lines for ancestor path
+                        candidate_ls_for_replacement, candidate_le_for_replacement = mls, mle
+            else: # File for ancestor path doesn't exist (e.g. user kept a bad path)
+                print(f"❌ File '{candidate_path_for_ancestor}' does not exist in ancestor {ancestor_commit[:8]}.")
+                # Simplified: if file doesn't exist, can't form a good replacement unless user clears lines.
+                # This part of the logic for "missing file but keep path" needs to be robust.
+                # For now, if path is bad, replacement URL will be too.
+
+            # Construct URL for ancestor path if not overridden by a full URL
+            if not final_verified_replacement_url:
+                final_verified_replacement_url = self._create_replacement_permalink(
+                    original, ancestor_commit, candidate_path_for_ancestor,
+                    candidate_ls_for_replacement, candidate_le_for_replacement
+                )
+
+        elif ancestor_commit and not original.url_path : # E.g. original was a /tree/ link
+             final_verified_replacement_url = self._create_replacement_permalink(
+                original, ancestor_commit, None, None, None
             )
-            print(f"✨ Suggested replacement URL: {replacement_url}")
 
-        elif not has_ancestor:
-            print("  ℹ️ No common ancestor found in the main branch.")
+        if final_verified_replacement_url:
+            print(f"✨ Suggested replacement URL: {final_verified_replacement_url}")
+        elif not ancestor_commit: # No ancestor, no user URL
+            print("  ℹ️ No common ancestor found in the main branch, and no alternative URL provided.")
 
+        # --- Stage 3: Final Action Prompt ---
         action, remember_this_choice = self._prompt_user_for_final_action(
-            original, has_ancestor, replacement_url,
+            original,
+            bool(ancestor_commit or candidate_replacement_url_str), # "has_replacement_option"
+            final_verified_replacement_url,
             is_commit_slated_for_tagging
         )
 
         if remember_this_choice:
-            setattr(self, f"remembered_choice_{remembered_choice_key}", remember_this_choice)
+            # Remember based on whether a replacement was possible or not
+            # This logic for remember_key might need refinement based on how "replace all" vs "tag all" should behave
+            # when user provides an external URL vs. using an ancestor.
+            # For now, if any replacement URL was formed, consider it "with_ancestor" context for remembering.
+            current_remember_key = "with_ancestor" if (ancestor_commit or candidate_replacement_url_str) else "no_ancestor"
+            setattr(self, f"remembered_choice_{current_remember_key}", remember_this_choice)
 
-        # "untag" is a specific action returned by _prompt_user_for_final_action
-        # It will be handled by _prompt_user_for_commit to re-evaluate the current permalink.
-        if action == "untag":
-            return "untag", None, None, None # Path/lines not relevant for untag action itself
-        elif action == "replace":
-            return action, effective_replacement_url_path, current_replacement_ls, current_replacement_le
-        elif action == "tag": # This means user chose 't' or 'ta' when commit was NOT slated for tagging
-            return action, None, None, None # Path/lines not relevant for tag action itself
-        else: # skip
-            return action, effective_replacement_url_path, None, None
+        if action == "replace":
+            return action, final_verified_replacement_url
+        else: # "tag", "untag", "skip"
+            return action, None
 
     def _perform_replacement(self, permalink: PermalinkInfo, replacement_url: str) -> None:
         """Replaces the permalink in the file."""
@@ -1027,19 +1138,15 @@ class GitPermalinkChecker:
                 if stop_processing_permalinks_for_this_commit_entirely:
                     break
 
-                (
-                    current_action,
-                    effective_replacement_url_path,
-                    new_ls_for_replace,
-                    new_le_for_replace,
-                ) = self._prompt_user_for_replacement(
-                    permalink,
-                    ancestor_commit,
-                    file_path=file_path,
-                    index=commit_wide_replacement_idx,
-                    total=len(commit_permalinks),
-                    is_commit_slated_for_tagging=commit_is_currently_slated_for_tagging,
-                )
+                current_action, final_replacement_url_if_action_is_replace = \
+                    self._prompt_user_for_replacement(
+                        permalink,
+                        ancestor_commit,
+                        file_path=file_path,
+                        index=commit_wide_replacement_idx,
+                        total=len(commit_permalinks),
+                        is_commit_slated_for_tagging=commit_is_currently_slated_for_tagging,
+                    )
 
                 if current_action == "untag":
                     if commit_is_currently_slated_for_tagging:
@@ -1089,16 +1196,16 @@ class GitPermalinkChecker:
                     # as it would be '-t'), this path is defensive.
 
                 elif current_action == "replace":
-                    if ancestor_commit: # Should be true if action is "replace"
-                        final_replacement_url = self._create_replacement_permalink(
-                            permalink, ancestor_commit, effective_replacement_url_path,
-                            new_ls_for_replace, new_le_for_replace
+                    if final_replacement_url_if_action_is_replace:
+                        replacements_for_this_commit_group.append(
+                            (permalink, final_replacement_url_if_action_is_replace)
                         )
-                        replacements_for_this_commit_group.append((permalink, final_replacement_url))
+                    else: # Should not happen if action is "replace"
+                        self._vprint(f"  ⚠️ Action was 'replace' but no replacement URL was provided for {permalink.url[:50]}. Skipping.")
+
                 elif current_action == "skip":
                     print(f"  ⏭️ Skipping permalink: {permalink.url[:50]}...")
 
-                # Increment counters as we are done with this permalink (or decided to stop all for commit)
                 permalink_idx += 1
                 commit_wide_replacement_idx += 1
 
@@ -1191,7 +1298,8 @@ class GitPermalinkChecker:
             # Found a common ancestor in main branch
             ancestor_info = get_commit_info(ancestor_commit)
             print(f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}")
-            self._vprint(f"    👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
+            if ancestor_info: # Verbose print only if ancestor_info was fetched
+              self._vprint(f"    👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
             if self.auto_replace: # auto_replace takes precedence
                 action_for_commit_group = "replace_all_permalinks"
                 self._vprint(f"  🤖 --auto-replace: Will process replacements for {commit_hash[:8]}.")
@@ -1246,6 +1354,11 @@ class GitPermalinkChecker:
 
             if git_tag_exists(tag_name):
                 print(f"  ✅ Tag {tag_name} already exists for commit {commit_hash[:8]}")
+                if report_entry_for_this_tag: # Still report if it already exists
+                    report_entry_for_this_tag["tag_name"] = tag_name
+                    report_entry_for_this_tag["tag_message"] = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}" # Reconstruct expected message
+                    report_entry_for_this_tag["status"] = "already_exists"
+                    self.report_data["tags_created"].append(report_entry_for_this_tag)
                 continue
 
             tag_message = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"
@@ -1253,13 +1366,6 @@ class GitPermalinkChecker:
             if report_entry_for_this_tag:
                 report_entry_for_this_tag["tag_name"] = tag_name
                 report_entry_for_this_tag["tag_message"] = tag_message
-
-            if git_tag_exists(tag_name): # Check again, as it might have been created by another process or concurrently
-                print(f"  ✅ Tag {tag_name} already exists for commit {commit_hash[:8]}")
-                if report_entry_for_this_tag:
-                    report_entry_for_this_tag["status"] = "already_exists"
-                    self.report_data["tags_created"].append(report_entry_for_this_tag)
-                continue
 
             tag_created_successfully_or_simulated = execute_git_tag_creation(
                 tag_name, commit_hash, tag_message, self.dry_run
@@ -1290,27 +1396,26 @@ class GitPermalinkChecker:
         Pushes the given list of created tags to the remote 'origin'.
         This method respects self.dry_run.
         """
-        if not created_tag_names or self.dry_run:
-            if self.dry_run and created_tag_names:
-                self._vprint(
-                    f"  🧪 DRY RUN: Would attempt to push {len(created_tag_names)} tags if not in dry run."
-                )
-            elif not created_tag_names:
-                self._vprint("  ℹ️ No new tags were marked for creation/pushing.")
+        if not created_tag_names: # No new tags were actually created (e.g. all existed or failed)
+            if self.dry_run and any(entry.get("status") == "would_create" for entry in self.report_data.get("tags_created",[])):
+                 self._vprint("  🧪 DRY RUN: Would attempt to push tags if not in dry run and tags were newly created.")
+            else:
+                self._vprint("  ℹ️ No new tags were marked for creation/pushing, or all failed.")
             return
 
-        # Filter out tags that might have been in the list but weren't actually created
-        # (e.g., if a creation step failed but somehow the name was still added, or for robustness)
-        # In the current _process_and_create_tags, created_tag_names should only contain successfully created tags
-        # or tags that would be created in dry_run.
-        actually_created_tags_for_push = [t for t in created_tag_names if git_tag_exists(t) or self.dry_run]
+        if self.dry_run:
+            self._vprint(
+                f"  🧪 DRY RUN: Would attempt to push {len(created_tag_names)} tags if not in dry run: {', '.join(created_tag_names)}"
+            )
+            return
 
-        if actually_created_tags_for_push:
+        # In non-dry run, created_tag_names should only contain successfully created tags.
+        if created_tag_names:
             print(
-                f"\n🚀 Pushing {len(actually_created_tags_for_push)} created/verified tags to origin..."
+                f"\n🚀 Pushing {len(created_tag_names)} created tags to origin..."
             )
             try:
-                push_command = ["git", "push", "origin"] + actually_created_tags_for_push
+                push_command = ["git", "push", "origin"] + created_tag_names
                 subprocess.run(
                     push_command,
                     capture_output=True,
@@ -1322,17 +1427,12 @@ class GitPermalinkChecker:
             except subprocess.CalledProcessError as e:
                 stderr_output = e.stderr.strip() if e.stderr else "N/A"
                 print(f"  ❌ Failed to push tags. Command '{subprocess.list2cmdline(e.cmd)}' (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
-                print("  🎗️ You may need to push them manually: git push origin --tags")
+                print("  🎗️ You may need to push them manually: git push origin --tags") # Suggest pushing all tags as a fallback
             except subprocess.TimeoutExpired as e:
                 print(f"  ❌ Error: Timeout during tag push operation: {e}", file=sys.stderr)
                 print("  🎗️ You may need to push them manually: git push origin --tags")
-
-        elif (
-            created_tag_names
-        ):  # Tags were identified for creation, but none were new/successfully made or exist now
-            print(
-                "\nℹ️ No new tags were created or available to push (either existed previously, failed creation)."
-            )
+        else:
+             self._vprint("  ℹ️ No new tags were actually created to push.")
 
     def run(self) -> None:
         """Main execution function."""
@@ -1342,12 +1442,12 @@ class GitPermalinkChecker:
         self._vprint(
             f"Repo aliases: {self.repo_aliases if self.repo_aliases else 'None'}"
         )
-        self._vprint( # Added respect_gitignore
+        self._vprint(
             f"Respect gitignore: {self.respect_gitignore}, "
             f"Dry run: {self.dry_run}, Auto fetch: {self.auto_fetch_commits}, Auto replace: {self.auto_replace}, Auto tag: {self.auto_tag}"
-        ) # self.line_shift_tolerance_str
-        if self.output_json_report_path: # self.line_shift_tolerance_str
-            self._vprint(f"JSON Report output: {self.output_json_report_path}") # self.line_shift_tolerance_str
+        )
+        if self.output_json_report_path:
+            self._vprint(f"JSON Report output: {self.output_json_report_path}")
         self._vprint(f"Line shift tolerance: {self.line_shift_tolerance_str} (parsed as: {'percentage' if self.tolerance_is_percentage else 'absolute'}, value: {self.tolerance_value})")
         self._vprint("-" * 50)
 
@@ -1355,6 +1455,7 @@ class GitPermalinkChecker:
         permalinks = self.find_github_permalinks()
         if not permalinks:
             print("No GitHub permalinks found in this repository.")
+            self._write_json_report() # Write empty report if path specified
             return
 
         num_unique_commits, num_unique_files = self._count_unique_commits_and_files(permalinks)
@@ -1363,9 +1464,7 @@ class GitPermalinkChecker:
         # Group permalinks by commit hash
         commits_to_process_map: dict[str, list[PermalinkInfo]] = {}
         for permalink in permalinks:
-            if permalink.commit_hash not in commits_to_process_map:
-                commits_to_process_map[permalink.commit_hash] = []
-            commits_to_process_map[permalink.commit_hash].append(permalink)
+            commits_to_process_map.setdefault(permalink.commit_hash, []).append(permalink)
 
         all_commits_to_tag: List[Tuple[str, Dict[str, str]]] = []
         all_replacements_to_make: List[Tuple[PermalinkInfo, str]] = []
@@ -1398,37 +1497,31 @@ class GitPermalinkChecker:
             # Use the helper method to count unique files involved in replacements
             replacements_by_file: Dict[Path, List[Tuple[PermalinkInfo, str]]] = {}
             for permalink_info, replacement_url in all_replacements_to_make:
-                file_path = permalink_info.found_in_file
-                if file_path not in replacements_by_file:
-                    replacements_by_file[file_path] = []
-                replacements_by_file[file_path].append((permalink_info, replacement_url))
+                replacements_by_file.setdefault(permalink_info.found_in_file, []).append((permalink_info, replacement_url))
 
-            sorted_file_paths = sorted(replacements_by_file.keys())
+            sorted_file_paths_for_replacement = sorted(replacements_by_file.keys())
 
             if self.dry_run:
                 print(
-                    f"\n🧪 DRY RUN SUMMARY: Would perform {len(all_replacements_to_make)} replacement(s) in {len(sorted_file_paths)} unique file(s):\n"
+                    f"\n🧪 DRY RUN SUMMARY: Would perform {len(all_replacements_to_make)} replacement(s) in {len(sorted_file_paths_for_replacement)} unique file(s):\n"
                 )
             else:
                 print(
-                    f"\n🏃 Performing {len(all_replacements_to_make)} permalink replacement(s) in {len(sorted_file_paths)} file(s)..."
+                    f"\n🏃 Performing {len(all_replacements_to_make)} permalink replacement(s) in {len(sorted_file_paths_for_replacement)} file(s)..."
                 )
 
             global_replacement_idx = 0
-            for group_idx, file_path in enumerate(sorted_file_paths):
-                replacements_in_file = replacements_by_file[file_path]
-                # Sort replacements within a file by line number for consistent order
+            for group_idx, file_path_for_replacement in enumerate(sorted_file_paths_for_replacement):
+                replacements_in_file = replacements_by_file[file_path_for_replacement]
                 replacements_in_file.sort(key=lambda item: item[0].found_at_line)
 
                 print(
-                    f"\n#{group_idx + 1}/{len(sorted_file_paths)} files: {file_path.relative_to(self.repo_root)} ({len(replacements_in_file)} replacement(s))"
+                    f"\n#{group_idx + 1}/{len(sorted_file_paths_for_replacement)} files: {file_path_for_replacement.relative_to(self.repo_root)} ({len(replacements_in_file)} replacement(s))"
                 )
 
                 for permalink_info, replacement_url in replacements_in_file:
                     global_replacement_idx += 1
-                    print(
-                        f"  {global_replacement_idx:3d}. Line {permalink_info.found_at_line}:"
-                    )
+                    print(f"  {global_replacement_idx:3d}. Line {permalink_info.found_at_line}:")
                     print(f"    🔗 OLD: {permalink_info.url}")
                     print(f"    ✨ NEW: {replacement_url}")
 
@@ -1444,6 +1537,10 @@ class GitPermalinkChecker:
         # Process and create tags for all commits that need tagging
         if all_commits_to_tag:
             self._process_and_create_tags(all_commits_to_tag)
+        elif self.dry_run : # No tags to create, but it's a dry run
+            print("\n🧪 DRY RUN: No commits identified for tagging.")
+        else: # No tags to create, not a dry run
+            print("\nℹ️ No commits were identified for tagging.")
 
         self._write_json_report()
         print("\n🏁 Permalink checking complete.")
@@ -1454,12 +1551,13 @@ class GitPermalinkChecker:
             return
 
         try:
+            # Ensure parent directory exists
+            self.output_json_report_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.output_json_report_path, "w", encoding="utf-8") as f:
                 json.dump(self.report_data, f, indent=2)
             print(f"\n📝 JSON report written to: {self.output_json_report_path}")
         except IOError as e:
             print(f"\n❌ Error writing JSON report to {self.output_json_report_path}: {e}", file=sys.stderr)
-
 
 
 def main():
@@ -1561,7 +1659,7 @@ def main():
             )
 
     try:
-        tagger = GitPermalinkChecker(
+        checker = GitPermalinkChecker(
             verbose=args.verbose,
             dry_run=args.dry_run,
             main_branch=args.main_branch,
@@ -1574,7 +1672,7 @@ def main():
             respect_gitignore=args.respect_gitignore,
             output_json_report=args.output_json_report,
         )
-        tagger.run()
+        checker.run()
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
         sys.exit(1)
@@ -1584,10 +1682,8 @@ def main():
     except Exception as e:  # Catch other unexpected errors
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         import traceback
-
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

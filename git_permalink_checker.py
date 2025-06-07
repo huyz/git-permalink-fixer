@@ -18,19 +18,7 @@ Usage
 
 python3 git_permalink_checker.py [OPTIONS]
 
-Options:
-- `--dry-run`: Show what would be done without making changes.
-- `--main-branch BRANCH`: Specify the main branch name (default: `main`).
-- `--tag-prefix PREFIX`: Specify the tag prefix, preferably namespaced with slash
-    (default: `permalinks/ref`).
-- `--auto-replace`: Automatically replace permalinks with ancestor versions if found
-    (takes precedence over --auto-tag if an ancestor exists).
-- `--auto-tag`: Automatically tag all unmerged commits without prompting
-    (--auto-replace takes precedence if an ancestor exists).
-- `--auto-fetch-commits`: Automatically fetch commits from the remote if missing
-    from the local repository.
-- `--non-interactive`: Enable all --auto-* flags (--auto-tag, --auto-replace,
-    --auto-fetch-commits).
+For all flags, run `python3 git_permalink_checker.py -h`
 
 
 Supported
@@ -95,8 +83,8 @@ class GitPermalinkChecker:
         auto_fetch_commits: bool = False,
         auto_replace: bool = False,
         auto_tag: bool = False,
-        line_shift_tolerance: int = 20,
-        repo_alias: Optional[List[str]] = None,
+        line_shift_tolerance: str = "20",
+        repo_aliases: Optional[List[str]] = None,
         respect_gitignore: bool = True,
         output_json_report: Optional[str] = None,
     ):
@@ -107,11 +95,13 @@ class GitPermalinkChecker:
         self.auto_fetch_commits = auto_fetch_commits
         self.auto_replace = auto_replace
         self.auto_tag = auto_tag
-        self.line_shift_tolerance = line_shift_tolerance
-        self.repo_alias = [alias.lower() for alias in repo_alias] if repo_alias else []
         self.respect_gitignore = respect_gitignore
         self.output_json_report_path = Path(output_json_report) if output_json_report else None
         self.report_data: Dict[str, List] = {"replacements": [], "tags_created": []}
+        self.repo_aliases = [alias.lower() for alias in repo_aliases] if repo_aliases else []
+
+        self.line_shift_tolerance_str = line_shift_tolerance # Store original for display/prompts
+        self.tolerance_is_percentage, self.tolerance_value = GitPermalinkChecker._parse_tolerance_input(line_shift_tolerance)
 
         # Initialize repo and GitHub info first, as _load_ignored_paths might need them
         self.repo_root = get_repo_root()
@@ -123,6 +113,31 @@ class GitPermalinkChecker:
         self.remembered_choice_no_ancestor: Optional[str] = None
         self._remember_skip_all_fetches: bool = False
         self.ignored_paths_set: Set[Path] = self._load_ignored_paths() if self.respect_gitignore else set()
+
+    @staticmethod
+    def _parse_tolerance_input(tolerance_str: str) -> Tuple[bool, int]:
+        """
+        Parses the line shift tolerance string and validates it.
+        Returns: (is_percentage, value)
+        Raises ValueError if the format or value is invalid.
+        """
+        if tolerance_str.endswith("%"):
+            try:
+                val = int(tolerance_str[:-1])
+                if not (0 <= val <= 100):
+                    raise ValueError("Percentage tolerance must be between 0% and 100%.")
+                return True, val
+            except ValueError as e:
+                raise ValueError(f"Invalid percentage tolerance format '{tolerance_str}': {e}")
+        else:
+            try:
+                val = int(tolerance_str)
+                if val < 0:
+                    raise ValueError("Absolute line shift tolerance cannot be negative.")
+                return False, val
+            except ValueError as e:
+                raise ValueError(f"Invalid absolute tolerance format '{tolerance_str}': {e}")
+
 
     def _load_ignored_paths(self) -> Set[Path]:
         """
@@ -156,14 +171,14 @@ class GitPermalinkChecker:
         Normalizes a repository name for comparison against the current repository.
 
         If the given repo_name (case-insensitive) matches the main repository name
-        (self.github_repo) or is one of its configured aliases (self.repo_alias),
+        (self.github_repo) or is one of its configured aliases (self.repo_aliases),
         this method returns the lowercased main repository name.
         Otherwise, it returns the lowercased version of the input repo_name.
         """
         if not repo_name:
             return repo_name
         lower_repo_name = repo_name.lower()
-        if lower_repo_name == self.github_repo.lower() or lower_repo_name in self.repo_alias:
+        if lower_repo_name == self.github_repo.lower() or lower_repo_name in self.repo_aliases:
             return self.github_repo.lower()
         return lower_repo_name
 
@@ -218,7 +233,7 @@ class GitPermalinkChecker:
                         )
                         if permalinks_in_ignored_file:
                             self._vprint(
-                                f"  🙈 File skipped due to .gitignore rules but contains {len(permalinks_in_ignored_file)} permalink(s): {file_path.relative_to(self.repo_root)}"
+                                f"  🙈 gitignored file with {len(permalinks_in_ignored_file)} permalink(s): {file_path.relative_to(self.repo_root)}"
                             )
                     except (UnicodeDecodeError, IOError, OSError, PermissionError) as e_log:
                         self._vprint(f"  ⚠️ Could not read gitignored file {file_path.relative_to(self.repo_root)} for special logging: {e_log}")
@@ -326,11 +341,24 @@ class GitPermalinkChecker:
 
             num_target_lines = len(target_original_stripped_lines)
 
-            tolerance_to_use = (
-                custom_tolerance if custom_tolerance is not None else self.line_shift_tolerance
-            )
+            effective_tolerance_lines: int
+            if custom_tolerance is not None: # custom_tolerance is always absolute
+                effective_tolerance_lines = custom_tolerance
+            elif self.tolerance_is_percentage:
+                # This part assumes replacement_content_lines is available if we need to calculate percentage.
+                # The function structure ensures replacement_content_lines is fetched early if original.url_path is valid.
+                # If replacement_content_lines is None here, it means the file content wasn't available,
+                # and the function would have returned (False, None, None) earlier.
+                if not replacement_content_lines: # Should ideally not happen if logic flows correctly
+                    self._vprint(f"Warning: Could not determine replacement content lines for percentage tolerance calculation for {replacement_url_path}")
+                    return False, None, None
+                num_lines_in_replacement = len(replacement_content_lines)
+                effective_tolerance_lines = int(num_lines_in_replacement * (self.tolerance_value / 100.0))
+            else: # Absolute tolerance from self (self.tolerance_value)
+                effective_tolerance_lines = self.tolerance_value
+
             # Try all shifts from 0 outward, alternating +shift and -shift
-            for offset in range(0, tolerance_to_use + 1):
+            for offset in range(0, effective_tolerance_lines + 1):
                 for shift in (offset, -offset) if offset != 0 else (0,):
                     shifted_start_idx_repl = start_idx_orig + shift
                     if 0 <= shifted_start_idx_repl < len(replacement_content_lines) and (
@@ -493,25 +521,37 @@ class GitPermalinkChecker:
                 open_urls_in_browser(urls_to_open)
                 continue  # Re-prompt
             elif menu_choice == 'l':
-                # ... (logic for new tolerance, verify_line_content) ...
-                # This part is complex and involves re-verification. For brevity in this diff,
-                # the detailed implementation of 'l' is omitted but would be similar to original.
-                # For now, let's assume it might resolve and break, or continue.
-                # Simplified:
+                abs_custom_tolerance: int
                 try:
-                    new_tol_str = input(f"    Enter new tolerance (current global: {self.line_shift_tolerance}, 0 to disable shift): ")
-                    new_tolerance = int(new_tol_str)
-                    if new_tolerance < 0:
-                        raise ValueError("Tolerance cannot be negative.")
-                    print(f"\n🔄 Re-checking with tolerance {new_tolerance}...")
-                    match, ls, le = self._verify_line_content(original, ancestor_commit, replacement_url_path, custom_tolerance=new_tolerance)
+                    new_tol_str = input(f"    Enter new tolerance (current global: {self.line_shift_tolerance_str}, e.g., 20 or 10%, 0 to disable shift): ").strip()
+                    if not new_tol_str:
+                        print("    Input cannot be empty. Try again.")
+                        continue
+
+                    is_percentage, val = GitPermalinkChecker._parse_tolerance_input(new_tol_str)
+
+                    if is_percentage:
+                        # Fetch replacement content lines to calculate absolute tolerance
+                        replacement_content_lines_for_calc = get_file_content_at_commit(ancestor_commit, replacement_url_path)
+                        if not replacement_content_lines_for_calc:
+                            print(f"    ⚠️ Could not fetch content of '{replacement_url_path}' in ancestor to calculate percentage. Try absolute tolerance.")
+                            continue
+                        num_lines = len(replacement_content_lines_for_calc)
+                        abs_custom_tolerance = int(num_lines * (val / 100.0))
+                        self._vprint(f"    ℹ️ Using {val}% of {num_lines} lines = {abs_custom_tolerance} lines tolerance for this check.")
+                    else:
+                        abs_custom_tolerance = val
+
+                    print(f"\n🔄 Re-checking with tolerance {abs_custom_tolerance} lines...")
+                    match, ls, le = self._verify_line_content(original, ancestor_commit, replacement_url_path, custom_tolerance=abs_custom_tolerance)
                     if match:
                         print(f"✅ Match found with new tolerance at L{ls}" + (f"-L{le}" if le and le != ls else "") + "!")
                         return ls, le, False # Resolved
                     else:
-                        print(f"❌ No match found even with tolerance {new_tolerance}.")
+                        print(f"💥 No match found even with tolerance {abs_custom_tolerance} lines.")
                 except ValueError as e:
                     print(f"    Invalid tolerance: {e}")
+                    continue # Re-prompt for line mismatch
 
             elif menu_choice == 'm':
                 new_input = input("    Enter new line numbers (e.g., 10 or 10-15) OR a full GitHub URL for replacement: ").strip()
@@ -525,21 +565,16 @@ class GitPermalinkChecker:
                     if parsed_info_from_url:
                         if parsed_info_from_url.url_path:
                             if parsed_info_from_url.url_path == replacement_url_path:
-                                print(f"    Parsed as URL for file '{replacement_url_path}'. Using line numbers from URL.")
+                                self._vprintf(f"    Parsed as URL for file '{replacement_url_path}'. Using line numbers from URL.")
                                 return parsed_info_from_url.line_start, parsed_info_from_url.line_end, False # Resolved
                             else:
-                                print(f"    The GitHub URL points to a different file ('{parsed_info_from_url.url_path}').")
-                                print(f"    This prompt is for adjusting lines within '{replacement_url_path}'.")
-                                continue # Re-prompt for line mismatch
+                                print(f"    ⚠️ The GitHub URL points to a different file ('{parsed_info_from_url.url_path}').")
                         else:
                             # URL parsed for this repo, but no file_path (e.g. base tree/commit link)
-                            print(f"    The GitHub URL '{new_input}' does not point to a specific file. Please provide a URL that includes a file path and line numbers, or enter line numbers directly.")
-                            continue # Re-prompt for line mismatch
+                            print(f"    ⚠️ The GitHub URL '{new_input}' does not point to a specific file.");
                     else:
-                        # Input looked like a URL, but parsing failed (malformed or wrong repo)
-                        print(f"    The input '{new_input}' is not a valid GitHub URL for the current repository ({self.github_owner}/{self.github_repo}), or it's malformed.")
-                        print(f"    Please provide a valid URL for file '{replacement_url_path}' in this repository, or enter line numbers directly.")
-                        continue # Re-prompt for line mismatch
+                        print(f"    ⚠️ The input '{new_input}' is not a valid GitHub URL for the current repository ({self.github_owner}/{self.github_repo}), or it's malformed.")
+                    continue # Re-prompt for line mismatch
                 else: # Input is treated as line numbers
                     try:
                         if '-' in new_input:
@@ -693,7 +728,7 @@ class GitPermalinkChecker:
                 self._vprint(
                     f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}"
                 )
-                self._vprint(f"   Author: {ancestor_info['author']} ({ancestor_info['date']})")
+                self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
             # --- Stage 1: Resolve File Path for Replacement, if original had one ---
             if original.url_path:
@@ -1139,7 +1174,7 @@ class GitPermalinkChecker:
             return None, local_replacements_to_make
 
         self._vprint(f"  📝 {commit_info['subject']}")
-        self._vprint(f"  👤 {commit_info['author']} ({commit_info['date']})")
+        self._vprint(f"    👤 Author: {commit_info['author']} ({commit_info['date']})")
         self._vprint(f"  🔗 Referenced in {len(commit_permalinks)} permalink(s)")
 
         # Check if the commit is already in the main branch
@@ -1156,6 +1191,7 @@ class GitPermalinkChecker:
             # Found a common ancestor in main branch
             ancestor_info = get_commit_info(ancestor_commit)
             print(f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}")
+            self._vprint(f"    👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
             if self.auto_replace: # auto_replace takes precedence
                 action_for_commit_group = "replace_all_permalinks"
                 self._vprint(f"  🤖 --auto-replace: Will process replacements for {commit_hash[:8]}.")
@@ -1304,15 +1340,15 @@ class GitPermalinkChecker:
         self._vprint(f"GitHub: {self.github_owner}/{self.github_repo}")
         self._vprint(f"Main branch: {self.main_branch}, Tag prefix: {self.tag_prefix}")
         self._vprint(
-            f"Repo aliases: {self.repo_alias if self.repo_alias else 'None'}"
+            f"Repo aliases: {self.repo_aliases if self.repo_aliases else 'None'}"
         )
         self._vprint( # Added respect_gitignore
             f"Respect gitignore: {self.respect_gitignore}, "
             f"Dry run: {self.dry_run}, Auto fetch: {self.auto_fetch_commits}, Auto replace: {self.auto_replace}, Auto tag: {self.auto_tag}"
-        )
-        if self.output_json_report_path:
-            self._vprint(f"JSON Report output: {self.output_json_report_path}")
-        self._vprint(f"Line shift tolerance: {self.line_shift_tolerance}")
+        ) # self.line_shift_tolerance_str
+        if self.output_json_report_path: # self.line_shift_tolerance_str
+            self._vprint(f"JSON Report output: {self.output_json_report_path}") # self.line_shift_tolerance_str
+        self._vprint(f"Line shift tolerance: {self.line_shift_tolerance_str} (parsed as: {'percentage' if self.tolerance_is_percentage else 'absolute'}, value: {self.tolerance_value})")
         self._vprint("-" * 50)
 
         # Find all permalink commits
@@ -1441,8 +1477,16 @@ def main():
         "-n",
         "--dry-run",
         action="store_true",
-        help="Show what would be done without making any changes (tags, file modifications, or remote pushes)."
-        " Note: will still attempt to fetch commits if they are not found locally.",
+        help="Show what would be done without making any changes (tags, file modifications, or remote pushes).\n"
+        "Note: will still attempt to fetch commits if they are not found locally.",
+    )
+    parser.add_argument(
+        "-I",
+        "--no-ignore",
+        action="store_false",
+        dest="respect_gitignore",  # By default, respect_gitignore will be True
+        help="Disable checking .gitignore. By default, files ignored by git are skipped.\n"
+        "Set this flag to include them in the search (current behavior before this flag).",
     )
     parser.add_argument(
         "--main-branch",
@@ -1468,8 +1512,8 @@ def main():
     parser.add_argument(
         "--auto-replace",
         action="store_true",
-        help="Automatically replace permalinks with versions pointing to the closest ancestor in the main branch,"
-        " if found. Takes precedence over --auto-tag when an ancestor is available.",
+        help="Automatically replace permalinks with versions pointing to the closest ancestor in the main branch,\n"
+        "if found. Takes precedence over --auto-tag when an ancestor is available.",
     )
     parser.add_argument(
         "--non-interactive",
@@ -1482,25 +1526,21 @@ def main():
     )
     parser.add_argument(
         "--line-shift-tolerance",
-        type=int,
-        default=20,
+        type=str,
+        default="20",
         help="Max number of lines to shift up/down when searching for matching content in ancestor commits"
-        " (default: %(default)s). Set to 0 to disable shifting.",
+        " (default: %(default)s).\n"
+        "Can be an absolute number (e.g., '20') or a percentage of the target file's lines (e.g., '10%%').\n"
+        "Set to '0' or '0%%' to disable shifting.",
     )
     parser.add_argument(
         "--repo-alias",
+        dest="repo_aliases",
         default=[],
         action="append",
-        help="Alternative repository names (e.g., 'old-repo-name' 'project-alias')"
-        " that should be considered aliases for the current repository when parsing permalinks.\n"
+        help="Alternative repository names (e.g., 'old-repo-name' 'project-alias') that should be\n"
+        "considered aliases for the current repository when parsing permalinks.\n"
         "This flag can be used multiple times to specify different aliases.",
-    )
-    parser.add_argument(
-        "--no-respect-gitignore",
-        action="store_false",
-        dest="respect_gitignore",  # By default, respect_gitignore will be True
-        help="Disable checking .gitignore. By default, files ignored by git are skipped. "
-        "Set this flag to include them in the search (current behavior before this flag).",
     )
     parser.add_argument(
         "--output-json-report",
@@ -1530,7 +1570,7 @@ def main():
             auto_replace=args.auto_replace,
             auto_tag=args.auto_tag,
             line_shift_tolerance=args.line_shift_tolerance,
-            repo_alias=args.repo_alias,
+            repo_aliases=args.repo_aliases,
             respect_gitignore=args.respect_gitignore,
             output_json_report=args.output_json_report,
         )

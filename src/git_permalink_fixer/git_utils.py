@@ -1,6 +1,6 @@
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple, Callable
+from typing import Optional, List, Dict, Set, Tuple, Callable
 import re
 import sys
 
@@ -62,6 +62,40 @@ def get_remote_url() -> str:
         raise RuntimeError("Failed to get remote URL for 'origin'.")
 
 
+def load_ignored_paths(repo_root: Optional[Path] = None) -> Set[Path]:
+    """
+    Loads all git-ignored files and directories using 'git status --porcelain=v1 --ignored'.
+    Returns a set of absolute Paths.
+    """
+    ignored_set = set()
+
+    if repo_root is None:
+        repo_root = get_repo_root()
+
+    try:
+        # -C self.repo_root ensures the command runs in the repo root.
+        # Paths in output are relative to repo_root.
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "status", "--porcelain=v1", "--ignored"],
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding="utf-8",
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("!! "):
+                # Output is "!! path/to/item", so path is relative to repo root
+                ignored_item_relative_path = line[3:].strip()
+                ignored_set.add(repo_root / ignored_item_relative_path)
+    except subprocess.CalledProcessError as e:
+        stderr_output = e.stderr.strip() if e.stderr else "N/A"
+        print(f"Error: Failed to get git-ignored files. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
+        raise RuntimeError("Failed to get git-ignored files.")
+    except FileNotFoundError as e:
+        raise RuntimeError("Failed to get git-ignored files.")
+    return ignored_set
+
+
 def get_github_info_from_url(remote_url: str) -> Tuple[str, str]:
     """Extract owner/repo from a GitHub remote URL."""
     patterns = [
@@ -79,6 +113,7 @@ def get_github_info_from_url(remote_url: str) -> Tuple[str, str]:
             if owner and repo:  # Ensure non-empty matches
                 return owner, repo
     raise RuntimeError(f"Could not parse GitHub owner/repo from remote URL: {remote_url}")
+
 
 def is_commit_in_main(commit_hash: str, main_branch: str) -> bool:
     """Check if a commit is reachable from the main branch."""

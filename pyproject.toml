@@ -20,7 +20,10 @@ build-backend = "hatchling.build"
 
 [tool.rye]
 managed = true
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.4.0",
+    "pytest-mock>=3.14.1",
+]
 line-length = 100  # Default is 88
 
 [tool.hatch.metadata]
@@ -34,3 +37,8 @@ line-length = 100  # Default is 88
 
 [tool.prettier]
 tabWidth = 4  # Default is 2
+
+[tool.ruff]
+#line-length = 100  # Default is 88
+#select = ["F", "E", "W", "C", "I", "N"]
+ignore = ["F541"]  # Ignore unused variable in f-string

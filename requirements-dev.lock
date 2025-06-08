@@ -14,9 +14,26 @@ certifi==2025.4.26
     # via requests
 charset-normalizer==3.4.2
     # via requests
+exceptiongroup==1.3.0
+    # via pytest
 idna==3.10
     # via requests
+iniconfig==2.1.0
+    # via pytest
+packaging==25.0
+    # via pytest
+pluggy==1.6.0
+    # via pytest
+pygments==2.19.1
+    # via pytest
+pytest==8.4.0
+    # via pytest-mock
+pytest-mock==3.14.1
 requests==2.32.3
     # via git-permalink-fixer
+tomli==2.2.1
+    # via pytest
+typing-extensions==4.14.0
+    # via exceptiongroup
 urllib3==2.4.0
     # via requests

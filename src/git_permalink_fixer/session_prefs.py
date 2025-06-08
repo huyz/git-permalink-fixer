@@ -11,7 +11,7 @@ class SessionPreferences:
     auto_fallback: Optional[str] = None  # "tag" or "skip"
     remembered_action_with_repl: Optional[str] = None
     remembered_action_without_repl: Optional[str] = None
-    _remember_skip_all_fetches: bool = False
+    remember_skip_all_fetches: bool = False
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> 'SessionPreferences':

@@ -1,23 +1,10 @@
 import webbrowser
-from typing import List, Optional, Tuple
-import re
+from typing import List, Optional
 import sys
 import requests # Ensure 'requests' is in your requirements.txt
 
+from git_permalink_fixer.url_utils import parse_any_github_url_for_raw_content
 
-# Helper to parse GitHub blob/tree URL for raw content fetching
-def parse_any_github_url_for_raw_content(url: str) -> Optional[Tuple[str, str, str, str]]:
-    """
-    Parses a GitHub blob URL to extract components needed for fetching raw content.
-    Example: https://github.com/owner/repo/blob/ref/path/to/file.txt
-    Returns: (owner, repo, ref, path) or None
-    """
-    match = re.match(r"https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)", url, re.IGNORECASE)
-    if match:
-        owner, repo, ref, path = match.groups()
-        path = path.split('#')[0].split('?')[0]  # Clean path from fragments or query params
-        return owner, repo, ref, path
-    return None
 
 
 def fetch_raw_github_content_from_url(github_file_url: str) -> Optional[List[str]]:

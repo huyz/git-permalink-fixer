@@ -8,9 +8,8 @@ from .permalink_info import PermalinkInfo
 from .constants import (
     COMMON_EXTENSIONLESS_REPO_FILES,
     COMMON_TEXT_FILE_EXTENSIONS,
-    GITHUB_PERMALINK_RE,
-    GITHUB_BLOB_PERMALINK_RE,
 )
+from .url_utils import parse_github_permalink
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ def extract_permalinks_from_file(
     git_owner: str,
     git_repo: str,
     current_found_count: int,
-    normalize_repo_name_func=None,
+    normalize_repo_name_func: Optional[callable] = None,
 ) -> Tuple[List[PermalinkInfo], int, bool]:
     """Helper to extract permalinks from the lines of a single file."""
     permalinks_in_file: List[PermalinkInfo] = []
@@ -94,53 +93,3 @@ def extract_permalinks_from_file(
                     f"    {current_found_count:2d}. 📍 Found permalink: {p_info.commit_hash[:8]}"
                 )
     return permalinks_in_file, current_found_count, file_header_printed
-
-
-def parse_github_permalink(
-    url: str, git_owner: str, git_repo: str, normalize_repo_name_func=None
-) -> PermalinkInfo | None:
-    """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers."""
-
-    match = GITHUB_PERMALINK_RE.match(url)
-    if not match:
-        return None
-
-    owner, repo, commit_hash, url_path, line_start, line_end = match.groups()
-
-    # Validate commit hash length
-    if len(commit_hash) < 7 or len(commit_hash) > 40:
-        return None
-
-    # Only process URLs from the current repository
-    if owner.lower() != git_owner.lower() or (
-        normalize_repo_name_func(repo) != normalize_repo_name_func(git_repo)
-        if normalize_repo_name_func
-        else repo.lower() != git_repo.lower()
-    ):
-        return None
-
-    return PermalinkInfo(
-        url=url,
-        commit_hash=commit_hash,
-        url_path=url_path,
-        line_start=int(line_start) if line_start else None,
-        line_end=int(line_end) if line_end else None,
-        found_in_file=Path(),  # Will be set by caller
-        found_at_line=0,  # Will be set by caller
-    )
-
-
-def parse_github_blob_permalink(url: str) -> Optional[Tuple[str, str, str, str, Optional[int], Optional[int]]]:
-    """
-    Parses any GitHub file URL (blob view) to extract owner, repo, ref (commit/branch),
-    path, and line numbers.
-    Returns: (owner, repo, ref, path, line_start, line_end) or None
-    """
-    match = GITHUB_BLOB_PERMALINK_RE.match(url)
-    if not match:
-        return None
-    owner, repo, ref, path_part, ls, le = match.groups()
-    # Sanitize path_part further if necessary, though regex tries to capture up to # or ?
-    # path_part might still contain query parameters if not starting with #
-    path_part = path_part.split('?')[0]
-    return owner, repo, ref, path_part, int(ls) if ls else None, int(le) if le else None

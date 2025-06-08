@@ -6,7 +6,7 @@ from typing import Set, Optional, Tuple, Dict, Any, List
 
 from .global_prefs import GlobalPreferences
 from .session_prefs import SessionPreferences
-from .file_ops import extract_permalinks_from_file, should_skip_file_search, parse_github_blob_permalink
+from .file_ops import extract_permalinks_from_file, should_skip_file_search
 from .web_utils import open_urls_in_browser, fetch_raw_github_content_from_url
 from .git_utils import (
     get_repo_root,
@@ -22,8 +22,8 @@ from .git_utils import (
     create_git_tag,
     fetch_commit_if_missing,
     load_ignored_paths,
-    update_url_with_line_numbers,
 )
+from .url_utils import update_github_url_with_line_numbers, parse_github_blob_permalink
 from .permalink_info import PermalinkInfo
 from .operation_set import OperationSet, PermalinkReplacementOperation, \
     TagCreationOperation
@@ -89,6 +89,7 @@ class PermalinkFixerApp:
         """Find all GitHub commit permalinks in the repository."""
         examination_set = ExaminationSet()
 
+        ignored_paths_set: Optional[Set[Path]] = None
         try:
             ignored_paths_set: Set[Path] = (
                 load_ignored_paths() if self.global_prefs.respect_gitignore else set()
@@ -113,18 +114,21 @@ class PermalinkFixerApp:
             if skipped_by_fundamental_rules:
                 process_this_file = False
             else:
-                # 2. Not skipped by fundamental rules. Now check .gitignore if respect_gitignore is active.
+                # 2. Not skipped by fundamental rules. Now check .gitignore if respect_gitignore is
+                # active.
                 if self.global_prefs.respect_gitignore and ignored_paths_set:
                     # Check if the file is covered by .gitignore rules by seeing if
                     # should_skip_file_search returns True when the gitignore set IS provided.
                     if should_skip_file_search(file_path, self.repo_root, ignored_paths_set):
-                        # Since skipped_by_fundamental_rules is False, this means it's skipped *solely* due to .gitignore
+                        # Since skipped_by_fundamental_rules is False, this means it's skipped
+                        # *solely* due to .gitignore
                         process_this_file = False
                         log_as_skipped_due_to_gitignore = True
 
             if not process_this_file:
                 if log_as_skipped_due_to_gitignore and self.global_prefs.verbose:
-                    # Peek into the git-ignored file to see if it contains permalinks for logging purposes
+                    # Peek into the git-ignored file to see if it contains permalinks for logging
+                    # purposes
                     try:
                         with open(
                             file_path, "r", encoding="utf-8", errors="ignore"
@@ -225,7 +229,8 @@ class PermalinkFixerApp:
                 eff_tolerance = custom_tolerance
             elif self.global_prefs.tolerance_is_percentage:
                 # This part assumes repl_lines is available if we need to calculate percentage.
-                # The function structure ensures repl_lines is fetched early if original.url_path is valid.
+                # The function structure ensures repl_lines are fetched early if the
+                # original.url_path is valid.
                 # If repl_lines is None here, it means the file content wasn't available,
                 # and the function would have returned (False, None, None) earlier.
                 if not repl_lines:  # Should ideally not happen if logic flows correctly
@@ -238,7 +243,7 @@ class PermalinkFixerApp:
             else:  # Absolute tolerance from self (self.tolerance_value)
                 eff_tolerance = self.global_prefs.tolerance_value
 
-            # Try all shifts from 0 outward, alternating +shift and -shift
+            # Try all shifts from 0 outward, alternating `+shift` and `-shift`
             for offset in range(0, eff_tolerance + 1):
                 for shift in (offset, -offset) if offset != 0 else (0,):
                     shifted_repl_start_idx = orig_start_idx + shift
@@ -272,7 +277,7 @@ class PermalinkFixerApp:
     ) -> bool:
         """
         Verify line content against a replacement candidate URL.
-        Fetches content if it's a GitHub URL. Trusts non-GitHub URLs for content match.
+        Fetch content if it's a GitHub URL. Trust non-GitHub URLs for content match.
         Returns: match_found
         """
         if not original.url_path or original.line_start is None:
@@ -362,7 +367,7 @@ class PermalinkFixerApp:
             base_url_parts.extend([url_type, repl_commit, repl_url_path.lstrip('/')])
             url_no_frag = "/".join(base_url_parts)
             # update_url_with_line_numbers handles adding #L fragments correctly
-            return update_url_with_line_numbers(url_no_frag, repl_ls, repl_le)
+            return update_github_url_with_line_numbers(url_no_frag, repl_ls, repl_le)
 
     def _construct_url_from_current_state(
         self,
@@ -376,7 +381,7 @@ class PermalinkFixerApp:
     ) -> Optional[str]:
         """Constructs a URL string based on the current resolution state for the 'keep' option."""
         if current_is_external and current_external_url_base:
-            return update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+            return update_github_url_with_line_numbers(current_external_url_base, current_ls, current_le)
         elif ancestor_commit:
             return self._construct_repl_permalink(original, ancestor_commit, current_path_for_ancestor, current_ls, current_le)
         return None
@@ -402,17 +407,17 @@ class PermalinkFixerApp:
             if not current_external_url_base:
                 return "needs_external_url", "No external URL specified. Provide one ('u') or choose another option.", None
             elif original.line_start is not None:
-                verify_url = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                verify_url = update_github_url_with_line_numbers(current_external_url_base, current_ls, current_le)
                 self._vprint(f"Verifying external URL: {verify_url}")
                 match, v_ls, v_le = self._verify_line_content_from_url(original, verify_url)
                 if match:
-                    final_url = update_url_with_line_numbers(current_external_url_base, v_ls, v_le)
+                    final_url = update_github_url_with_line_numbers(current_external_url_base, v_ls, v_le)
                     print(f"✅ Content matches for external URL. Proposed: {final_url}")
                     return "resolved", "", final_url
                 else:
                     return "lines_mismatch_external", f"Line content differs or cannot be verified for external URL {current_external_url_base}.", None
             else: # External URL, original had no lines
-                final_url = update_url_with_line_numbers(current_external_url_base, current_ls, current_le)
+                final_url = update_github_url_with_line_numbers(current_external_url_base, current_ls, current_le)
                 print(f"✅ Using external URL (no line verification needed): {final_url}")
                 return "resolved", "", final_url
         elif ancestor_commit:
@@ -482,7 +487,7 @@ class PermalinkFixerApp:
                 state["current_ls"], state["current_le"] = parsed_ls_from_frag, parsed_le_from_frag
 
                 if original.line_start is not None:
-                    verify_url_ext = update_url_with_line_numbers(state["current_external_url_base"], state["current_ls"], state["current_le"])
+                    verify_url_ext = update_github_url_with_line_numbers(state["current_external_url_base"], state["current_ls"], state["current_le"])
                     match, _, _ = self._verify_line_content_from_url(original, verify_url_ext)
                     if not match:
                         confirm_mismatch = input(f"    ⚠️ Content mismatch for this new URL. Use anyway? (y/n): ").strip().lower()
@@ -494,9 +499,9 @@ class PermalinkFixerApp:
                 print("    New URL not used.")
         return "state_updated_continue", state
 
+    @staticmethod
     def _resolution_menu_handle_set_line_numbers(
-        self,
-        state: Dict[str, Any]
+            state: Dict[str, Any]
     ) -> Tuple[str, Dict[str, Any]]:
         """Handles the 'l' menu choice for setting new line numbers."""
         new_lines_input = input("    Enter new line numbers (e.g., 10 or 10-15, or empty to clear): ").strip()
@@ -592,14 +597,14 @@ class PermalinkFixerApp:
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
         """
         def display_resolution_menu(
-            problem_description: str,
+            current_problem: str,
             current_path_for_ancestor: Optional[str],
             original_has_lines: bool,
         ) -> None:
             """Displays the interactive resolution menu."""
             print(f"\n❓ PERMALINK RESOLUTION (Details in verbose logs if enabled)")
-            if problem_description:
-                print(f"  ⚠️ Current issue: {problem_description}")
+            if current_problem:
+                print(f"  ⚠️ Current issue: {current_problem}")
 
             print("  OPTIONS:")
             print("  o) Open original and current candidate URLs in browser")
@@ -692,7 +697,7 @@ class PermalinkFixerApp:
             auto_chosen_action = "replace"
             self._vprint(f"    🤖 Commit-level 'replace' directive: Auto-choosing 'replace' for '{original.url[-50:]}'.")
         elif auto_action_directive_for_commit == "skip":
-            # 'sc' (skip commit group) is a fallback choice.
+            # `sc` (skip commit group) is a fallback choice.
             # It applies if no replacement URL is available for the current permalink.
             if not repl_url: # Fallback context
                 auto_chosen_action = "skip"
@@ -717,7 +722,7 @@ class PermalinkFixerApp:
         # Only if not already decided by commit-level or global auto flags
         if not auto_chosen_action:
             if repl_url:  # Replacement is possible
-                # 'replace_commit_group' from 'ra' means always replace if possible
+                # 'replace_commit_group' from 'ra' means always `replace` if possible
                 if self.session_prefs.remembered_action_with_repl in ["replace", "replace_commit_group"]:
                     auto_chosen_action = "replace"
                     self._vprint(f"    🤖 Remembered 'replace' (global): Auto-choosing 'replace' for '{original.url[-50:]}'.")
@@ -849,7 +854,7 @@ class PermalinkFixerApp:
                 )
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
-            if original.url_path:  # Only if original permalink pointed to a file
+            if original.url_path:  # Only if the original permalink pointed to a file
                 # Path resolution and line verification are now combined
                 spec_repl_url, aborted_resolution = self._resolve_replacement_interactively(
                     original,
@@ -858,9 +863,9 @@ class PermalinkFixerApp:
                 if aborted_resolution:
                     return "skip", None
                 # spec_repl_url is now the fully resolved URL or None
-            elif not original.url_path: # E.g. tree link, direct replacement with ancestor
+            elif not original.url_path: # E.g., tree link, direct replacement with ancestor
                 spec_repl_url = self._construct_repl_permalink(original, ancestor_commit, None, None, None)
-            # If original.url_path was None (e.g. tree link), we don't do this path resolution.
+            # If original.url_path was None (e.g., tree link), we don't do this path resolution.
 
         elif not ancestor_commit: # No ancestor, resolution relies on user providing a full URL
             self._vprint("No ancestor commit. User must provide a full URL or skip/tag.")
@@ -1058,13 +1063,15 @@ class PermalinkFixerApp:
                             print(
                                 f"  ℹ️ Commit {commit_hash[:8]} will be tagged. Other permalinks for this commit will reflect this."
                             )
-                            # If user chose "ta" (tag all), _prompt_user_for_final_action would have set remembered_action.
-                            # If they just chose "t", we don't automatically stop unless they pick "ta" or sub_choice 2.
+                            # If the user chose "ta" (tag all), _prompt_user_for_final_action would
+                            # have set remembered_action.
+                            # If they just chose "t", we don't automatically stop unless they pick
+                            # "ta" or sub_choice 2.
                             # If 'ta' was chosen, self.remembered_action_* would be 'tag'.
                             # If 't' was chosen, and no sub-prompt, we continue.
 
-                    # If commit was already slated and user chose 't' (which shouldn't be an option if UI is correct,
-                    # as it would be '-t'), this path is defensive.
+                    # If commit was already slated and user chose 't' (which shouldn't be an option
+                    # if the UI is correct, as it would be '-t'), this path is defensive.
 
                 elif current_action == "replace":
                     if final_repl_url_if_action_is_replace:
@@ -1112,7 +1119,7 @@ class PermalinkFixerApp:
                 self.session_prefs.auto_fetch_commits = True  # Enable for future calls
                 return True
             elif choice == "na":
-                self.session_prefs._remember_skip_all_fetches = True  # Prevent future prompts
+                self.session_prefs.remember_skip_all_fetches = True  # Prevent future prompts
                 self.session_prefs.auto_fetch_commits = False  # Ensure auto-fetch is off
                 return False
             else:
@@ -1137,7 +1144,10 @@ class PermalinkFixerApp:
         index_msg = f"Commit #{index + 1}/{total}: {commit_hash[:8]} ({len(commit_permalinks)} permalink(s))"
         print(f"\n[*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
 
-        can_prompt_for_fetch = not self.session_prefs.auto_fetch_commits and not self.session_prefs._remember_skip_all_fetches
+        can_prompt_for_fetch = (
+            not self.session_prefs.auto_fetch_commits
+            and not self.session_prefs.remember_skip_all_fetches
+        )
 
         if not fetch_commit_if_missing(
             commit_hash,
@@ -1221,7 +1231,7 @@ class PermalinkFixerApp:
         Pushes the given list of created tags to the remote 'origin'.
         This method respects self.dry_run.
         """ # self.dry_run should be self.global_prefs.dry_run
-        if not created_tag_names:  # No new tags were actually created (e.g. all existed or failed)
+        if not created_tag_names:  # No new tags were actually created (e.g., all existed or failed)
             if self.global_prefs.dry_run and any(
                 entry.get("status") == "would_create"
                 for entry in [] # Placeholder, report_data is now in OperationSet
@@ -1267,19 +1277,16 @@ class PermalinkFixerApp:
         else:
             self._vprint("  ℹ️ No new tags were actually created to push.")
 
-    def _process_and_create_tags(self, commits_to_tag: List[TagCreationOperation], operation_set: OperationSet) -> None:
+    def _execute_tag_creation(self, commits_to_tag: List[TagCreationOperation], operation_set: OperationSet) -> None:
         """
         Processes commits that need tagging, creates tags locally, or simulates in dry_run.
         And ends by calling the function to push the tags to the remote 'origin'.
         """
         # commits_to_tag is now List[TagCreationOperation]
-        print(f"\n📌 Tagging {len(set(c[0] for c in commits_to_tag))} unique commit(s)")
+        print(f"\n📌 Tagging {len(set(c for c in commits_to_tag))} unique commit(s)")
         created_tag_names = []
 
         # Deduplicate commits_to_tag by commit_hash, keeping the first encountered commit_info
-        unique_commits_to_tag_dict = {
-            commit_hash: commit_info for commit_hash, commit_info in reversed(commits_to_tag)
-        } # This needs to be adapted for TagCreationOperation
         final_commits_to_tag_ops: List[TagCreationOperation] = []
         seen_hashes = set()
         for op in reversed(commits_to_tag): # Keep first encountered if multiple for same hash
@@ -1291,57 +1298,37 @@ class PermalinkFixerApp:
         for op in final_commits_to_tag_ops:
             commit_hash = op.commit_hash
             commit_info = op.commit_info
-            report_entry_for_this_tag = None
-            if self.global_prefs.output_json_report_path:
-                report_entry_for_this_tag = {
-                    "commit_hash": commit_hash,
-                    "commit_subject": commit_info.get("subject", "N/A"),
-                    # tag_name, tag_message, and status will be set below
-                }
 
             tag_name = gen_git_tag_name(
                 commit_hash, commit_info.get("subject", ""), self.global_prefs.tag_prefix
             )
+            tag_message = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"
+            report_entry_for_this_tag = {
+                "commit_hash": commit_hash,
+                "commit_subject": commit_info.get("subject", "N/A"),
+                "tag_name": tag_name,
+                "tag_message": tag_message,
+            }
 
             if git_tag_exists(tag_name):
                 print(f"  ✅ Tag {tag_name} already exists for commit {commit_hash[:8]}")
-                if report_entry_for_this_tag:  # Still report if it already exists
-                    report_entry_for_this_tag["tag_name"] = tag_name
-                    report_entry_for_this_tag["tag_message"] = (
-                        f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"  # Reconstruct expected message
-                    )
-                    report_entry_for_this_tag["status"] = "already_exists"
-                    operation_set.report_data["tags_created"].append(report_entry_for_this_tag)
+                report_entry_for_this_tag["status"] = "already_exists"
+                operation_set.report_data["tags_created"].append(report_entry_for_this_tag)
                 continue
 
-            tag_message = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"
-
-            if report_entry_for_this_tag:
-                report_entry_for_this_tag["tag_name"] = tag_name
-                report_entry_for_this_tag["tag_message"] = tag_message
-
-            tag_created_successfully_or_simulated = create_git_tag(
-                tag_name, commit_hash, tag_message, self.global_prefs.dry_run
-            )
-
-            if tag_created_successfully_or_simulated:
-                if self.global_prefs.dry_run:  # Message already printed by execute_git_tag_creation
-                    if report_entry_for_this_tag:
-                        report_entry_for_this_tag["status"] = "would_create"
-                else:
-                    # Message already printed by execute_git_tag_creation
-                    # print(f"  🏷️ For commit {commit_hash[:8]}, successfully created tag: {tag_name}")
-                    if report_entry_for_this_tag:
-                        report_entry_for_this_tag["status"] = "created"
+            if create_git_tag(tag_name, commit_hash, tag_message, self.global_prefs.dry_run):
+                # Message already printed by execute_git_tag_creation
+                report_entry_for_this_tag["status"] = "created"
+                if self.global_prefs.dry_run:
+                    report_entry_for_this_tag["status"] = "would_create"
                 created_tag_names.append(tag_name)
             else:
                 # Error message already printed by execute_git_tag_creation
-                if report_entry_for_this_tag:
-                    report_entry_for_this_tag["status"] = "failed_to_create"
+                report_entry_for_this_tag["status"] = "failed_to_create"
 
-            if report_entry_for_this_tag and "status" in report_entry_for_this_tag:
-                operation_set.report_data["tags_created"].append(report_entry_for_this_tag)
+            operation_set.report_data["tags_created"].append(report_entry_for_this_tag)
 
+        # Now we can push the created tags to the remote
         self._push_created_tags(created_tag_names)
 
     def _examine_phase(self, examination_set: ExaminationSet) -> OperationSet:
@@ -1395,11 +1382,11 @@ class PermalinkFixerApp:
 
             if self.global_prefs.dry_run:
                 print(
-                    f"\n🧪 DRY RUN SUMMARY: Would perform {len(operation_set.replacements)} replacement(s) in {len(sorted_file_paths_for_replacement)} unique file(s):\n"
+                    f"\n🧪 DRY RUN SUMMARY: Would execute {len(operation_set.replacements)} replacement(s) in {len(sorted_file_paths_for_replacement)} unique file(s):\n"
                 )
             else:
                 print(
-                    f"\n🏃 Performing {len(operation_set.replacements)} permalink replacement(s) in {len(sorted_file_paths_for_replacement)} file(s)…"
+                    f"\n🏃 Executing {len(operation_set.replacements)} permalink replacement(s) in {len(sorted_file_paths_for_replacement)} file(s)…"
                 )
 
             global_repl_idx = 0
@@ -1408,7 +1395,6 @@ class PermalinkFixerApp:
             ):
                 repls_for_file = repls_by_file[file_path_for_repl]
                 repls_for_file.sort(key=lambda item: item[0].found_at_line)
-                # repls_for_file.sort(key=lambda item: item.permalink_info.found_at_line) # Corrected
 
                 print(
                     f"\n#{group_idx + 1}/{len(sorted_file_paths_for_replacement)} files: {file_path_for_repl.relative_to(self.repo_root)} ({len(repls_for_file)} replacement(s))" # type: ignore
@@ -1431,7 +1417,7 @@ class PermalinkFixerApp:
 
         # Process and create tags for all commits that need tagging
         if operation_set.tags_to_create:
-            self._process_and_create_tags(operation_set.tags_to_create, operation_set)
+            self._execute_tag_creation(operation_set.tags_to_create, operation_set)
         elif self.global_prefs.dry_run:  # No tags to create, but it's a dry run
             print("\n🧪 DRY RUN: No commits identified for tagging.")
         else:  # No tags to create, not a dry run

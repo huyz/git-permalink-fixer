@@ -51,8 +51,10 @@ from .app import PermalinkFixerApp
 
 
 def main():
+    """Main entry point for the GitHub Permalink Fixer application."""
     parser = argparse.ArgumentParser(
-        description="Finds GitHub commit permalinks, checks their status relative to the main branch, and assists in preserving or updating them.",
+        description="Finds GitHub commit permalinks, checks their status relative to the main branch, and assists"
+        " in preserving or updating them.",
         formatter_class=argparse.RawTextHelpFormatter,  # Allows for better formatting of help
     )
     parser.add_argument(
@@ -100,9 +102,9 @@ def main():
         type=str,
         default="20",
         help="Max number of lines to shift up/down when searching for matching content in ancestor commits"
-             " (default: %(default)s).\n"
-             "Can be an absolute number (e.g., '20') or a percentage of the target file's lines (e.g., '10%%').\n"
-             "Set to '0' or '0%%' to disable shifting.",
+        " (default: %(default)s).\n"
+        "Can be an absolute number (e.g., '20') or a percentage of the target file's lines (e.g., '10%%').\n"
+        "Set to '0' or '0%%' to disable shifting.",
     )
     parser.add_argument(
         "--auto-fetch-commits",
@@ -112,16 +114,18 @@ def main():
     parser.add_argument(
         "--auto-accept-replace",
         action="store_true",
-        help="Automatically accept suggested replacements if verification is successful (e.g. ancestor found and lines match within tolerance,\n"
-             "or user manually resolved to a verifiable state). Bypasses the final action prompt for these cases.",
+        help="Automatically accept suggested replacements if verification is successful (e.g. ancestor found and"
+        " lines match within tolerance, or user manually resolved to a verifiable state).\n"
+        "Bypasses the final action prompt for these cases.",
     )
     parser.add_argument(
         "--auto-fallback",
         choices=["tag", "skip"],
         default=None,
-        help="If a permalink cannot be successfully replaced (e.g., no ancestor, or line content verification fails and isn't resolved by user),\n"
-             "automatically choose a fallback action: 'tag' the original commit or 'skip' the permalink.\n"
-             "Bypasses the final action prompt for these fallback cases.",
+        help="If a permalink cannot be successfully replaced (e.g., no ancestor, or line content verification fails"
+        " and isn't resolved by user), automatically choose a fallback action: 'tag' the original commit or 'skip'"
+        " the permalink.\n"
+        "Bypasses the final action prompt for these fallback cases.",
     )
     parser.add_argument(
         "--non-interactive",
@@ -147,7 +151,8 @@ def main():
         args.auto_fetch_commits = True
         if args.verbose:
             print(
-                f"ℹ️ Non-interactive mode enabled: --auto-accept-replace, --auto-fallback={args.auto_fallback}, and --auto-fetch-commits are active."
+                f"ℹ️ Non-interactive mode enabled: --auto-accept-replace, --auto-fallback={args.auto_fallback},"
+                " and --auto-fetch-commits are active."
             )
 
     try:
@@ -162,9 +167,9 @@ def main():
     except RuntimeError as e:  # Catch specific custom errors
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:  # Catch other unexpected errors
+    except Exception as e:  # Catch other unexpected errors  # pylint: disable=broad-except
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
-        import traceback
+        import traceback  # pylint: disable=import-outside-toplevel
 
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)

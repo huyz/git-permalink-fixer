@@ -82,12 +82,10 @@ def update_github_url_with_line_numbers(base_url: str, line_start: Optional[int]
     if line_start is not None:
         if line_end is not None and line_end != line_start:
             return f"{url_no_frag}#L{line_start}-L{line_end}"
-        elif line_end is None and line_start > 0: # Single line
+        if line_end is None and line_start > 0: # Single line
             return f"{url_no_frag}#L{line_start}"
-        elif line_end is not None and line_end == line_start: # Single line specified as range
+        if line_end is not None and line_end == line_start: # Single line specified as range
             return f"{url_no_frag}#L{line_start}"
         # If line_start is 0 or invalid, or line_end implies no range, don't add fragment.
         # This case should ideally be handled by the caller ensuring line_start is valid if provided.
     return url_no_frag # No valid line_start provided or it was meant to be cleared.
-
-

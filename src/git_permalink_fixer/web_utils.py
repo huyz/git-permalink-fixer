@@ -1,7 +1,8 @@
-import webbrowser
 from typing import List, Optional
 import sys
-import requests # Ensure 'requests' is in your requirements.txt
+import webbrowser
+
+import requests
 
 from git_permalink_fixer.url_utils import parse_any_github_url_for_raw_content
 

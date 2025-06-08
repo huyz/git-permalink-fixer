@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple, Set, Optional
+from typing import List, Tuple, Set, Optional, Callable
 import re
 import logging
 from .permalink_info import PermalinkInfo
@@ -64,7 +64,7 @@ def extract_permalinks_from_file(
     git_owner: str,
     git_repo: str,
     current_found_count: int,
-    normalize_repo_name_func: Optional[callable] = None,
+    normalize_repo_name_func: Optional[Callable] = None,
 ) -> Tuple[List[PermalinkInfo], int, bool]:
     """Helper to extract permalinks from the lines of a single file."""
     permalinks_in_file: List[PermalinkInfo] = []

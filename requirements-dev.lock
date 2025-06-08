@@ -33,7 +33,9 @@ requests==2.32.3
     # via git-permalink-fixer
 tomli==2.2.1
     # via pytest
+types-requests==2.32.0.20250602
 typing-extensions==4.14.0
     # via exceptiongroup
 urllib3==2.4.0
     # via requests
+    # via types-requests

@@ -20,7 +20,7 @@ def get_repo_root() -> Path:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(f"Error: Could not determine repository root. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
-        raise RuntimeError(f"Not in a git repository. Failed to run '{subprocess.list2cmdline(e.cmd)}'.")
+        raise RuntimeError(f"Not in a git repository. Failed to run '{subprocess.list2cmdline(e.cmd)}'.") from e
 
 
 def get_remote_url() -> str:
@@ -59,7 +59,7 @@ def get_remote_url() -> str:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(f"Error: Failed to get remote URL. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
-        raise RuntimeError("Failed to get remote URL for 'origin'.")
+        raise RuntimeError("Failed to get remote URL for 'origin'.") from e
 
 
 def load_ignored_paths(repo_root: Optional[Path] = None) -> Set[Path]:
@@ -90,9 +90,9 @@ def load_ignored_paths(repo_root: Optional[Path] = None) -> Set[Path]:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(f"Error: Failed to get git-ignored files. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
-        raise RuntimeError("Failed to get git-ignored files.")
+        raise RuntimeError("Failed to get git-ignored files.") from e
     except FileNotFoundError as e:
-        raise RuntimeError("Failed to get git-ignored files.")
+        raise RuntimeError("Failed to get git-ignored files.") from e
     return ignored_set
 
 
@@ -122,6 +122,7 @@ def is_commit_in_main(commit_hash: str, main_branch: str) -> bool:
             ["git", "merge-base", "--is-ancestor", commit_hash, main_branch],
             capture_output=True,
             text=True,
+            check=False,
         )
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
@@ -168,6 +169,7 @@ def git_tag_exists(tag_name: str) -> bool:
             ["git", "rev-parse", f"refs/tags/{tag_name}"],
             capture_output=True,
             text=True,
+            check=False,
         )
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
@@ -238,9 +240,8 @@ def fetch_commit_if_missing(
                     print(f"Error: Commit {commit_hash} still not found after successful-looking fetch command.", file=sys.stderr)
                     return False
                 return True
-            else:
-                print(f"Error: Failed to fetch commit {commit_hash}. STDERR: {result.stderr.strip()}", file=sys.stderr)
-                return False
+            print(f"Error: Failed to fetch commit {commit_hash}. STDERR: {result.stderr.strip()}", file=sys.stderr)
+            return False
         except subprocess.CalledProcessError as e:
             stderr_output = e.stderr.strip() if e.stderr else "N/A"
             print(f"Error: A git command during fetch operation for {commit_hash} failed. Command '{subprocess.list2cmdline(e.cmd)}' (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
@@ -260,6 +261,7 @@ def commit_exists(commit_hash: str) -> bool:
             ["git", "cat-file", "-e", commit_hash],
             capture_output=True,
             text=True,
+            check=False,
         )
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
@@ -335,5 +337,3 @@ def file_exists_at_commit(commit_hash: str, url_path: str) -> bool:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(f"Error: Checking if file '{url_path}' exists at commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
         return False
-
-

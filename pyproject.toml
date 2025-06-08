@@ -23,8 +23,9 @@ managed = true
 dev-dependencies = [
     "pytest>=8.4.0",
     "pytest-mock>=3.14.1",
+    "types-requests>=2.32.0.20250602",
 ]
-line-length = 100  # Default is 88
+line-length = 120  # Default is 88
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -33,12 +34,37 @@ allow-direct-references = true
 packages = ["src/git_permalink_fixer"]
 
 [tool.black]
-line-length = 100  # Default is 88
+line-length = 120  # Default is 88
+
+[tool.isort]
+profile = "black"
 
 [tool.prettier]
 tabWidth = 4  # Default is 2
 
 [tool.ruff]
-#line-length = 100  # Default is 88
+line-length = 120  # Default is 88
+
+[tool.ruff.lint]
 #select = ["F", "E", "W", "C", "I", "N"]
 ignore = ["F541"]  # Ignore unused variable in f-string
+
+[tool.mypy]
+exclude_gitignore = true
+# 2025-06-08 Untested and seems unnecessarsy with https://github.com/szabope/mypy-pycharm-plugin
+#exclude = ['[.]venv', '^(.*/|)[.]?venv/.*']
+
+[tool.pylint.config]
+disable = ["missing-module-docstring", "missing-class-docstring", "missing-function-docstring", "line-too-long",
+    "too-many-locals", "too-many-arguments", "too-many-branches", "too-many-statements", "too-many-return-statements",
+    "too-many-instance-attributes", "f-string-without-interpolation"]
+
+[tool.pylint.MASTER]
+# Ignore dotfiles and directories, venv, and tests
+ignore-paths = ['^(.*/|)[.].*', '^(.*/|)[.]?venv/.*', '^(.*/|)tests/.*']
+
+[tool.pylint.FORMAT]
+max-line-length = 120
+
+[tool.flake8]
+max-line-length = 120

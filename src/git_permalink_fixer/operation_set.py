@@ -28,7 +28,7 @@ class OperationSet:
     tags_to_create: List[TagCreationOperation] = field(default_factory=list)
     report_data: Dict[str, List] = field(default_factory=lambda: {"replacements": [], "tags_created": []})
 
-    def write_json_report(self, output_path: Path) -> None:
+    def write_json_report(self, output_path: Optional[Path]) -> None:
         """Writes the collected report data to a JSON file if a path is specified."""
         if not output_path:
             return

@@ -27,10 +27,12 @@ pluggy==1.6.0
 pygments==2.19.1
     # via pytest
 pytest==8.4.0
+    # via git-permalink-fixer
     # via pytest-mock
 pytest-mock==3.14.1
 requests==2.32.3
     # via git-permalink-fixer
+setuptools==80.9.0
 tomli==2.2.1
     # via pytest
 types-requests==2.32.0.20250602

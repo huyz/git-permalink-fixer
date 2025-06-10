@@ -6,6 +6,7 @@ authors = [
     { name = "huyz", email = "huyz@users.noreply.github.com" }
 ]
 dependencies = [
+    "pytest>=8.4.0",
     "requests>=2.32.3",
 ]
 readme = "README.md"
@@ -24,6 +25,7 @@ dev-dependencies = [
     "pytest>=8.4.0",
     "pytest-mock>=3.14.1",
     "types-requests>=2.32.0.20250602",
+    "setuptools>=80.9.0",
 ]
 line-length = 120  # Default is 88
 

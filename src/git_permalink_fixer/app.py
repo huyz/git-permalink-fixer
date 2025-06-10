@@ -187,169 +187,105 @@ class PermalinkFixerApp:
 
         return examination_set
 
-    def _verify_line_content(
+    def _verify_content_match(
         self,
         original: PermalinkInfo,  # Defines original content source (commit, path, lines)
-        repl_commit_hash: str,  # Commit to check in
-        repl_url_path: str,  # File path to check in repl_commit_hash
-        custom_tolerance: Optional[int] = None,  # Optional line shift tolerance
+        target_commit_hash: Optional[str] = None,
+        target_file_path: Optional[str] = None,
+        target_url: Optional[str] = None,
+        custom_abs_tolerance: Optional[int] = None,  # Optional absolute line shift tolerance
     ) -> Tuple[bool, Optional[int], Optional[int]]:
         """
-        Verify line content, allowing for shifts. Strips leading/trailing whitespace.
+        Verifies if the content from the original permalink's specified lines exists in the target,
+        allowing for line shifts. The target can be specified by a commit hash and file path,
+        or by a URL. Strips leading/trailing whitespace from lines for comparison.
+
         Returns: (match_found, repl_ls, repl_le)
-        The repl_ls/repl_le are for the repl_commit if match_found is True.
-        A custom_tolerance can be provided to override self.line_shift_tolerance.
-        If the original permalink has no line numbers or no repl_url_path,
-        returns (True, None, None) or (False, None, None).
+        The repl_ls/repl_le are the new line numbers in the target if a match is found.
         """
-        if not original.url_path or original.line_start is None or not repl_url_path:
-            return True, None, None  # Vacuously true, no specific lines to verify
+        # 1. Handle original permalink to get original content
+        if not original.url_path or original.line_start is None:
+            # No specific lines in original to verify.
+            # If target is a URL, try to return its line numbers.
+            if target_url:
+                gh_info = parse_github_blob_permalink(target_url)
+                parsed_ls, parsed_le = (gh_info[4], gh_info[5]) if gh_info else (None, None)
+                return True, parsed_ls, parsed_le
+            return True, None, None # Vacuously true for git targets
 
         orig_lines = get_file_content_at_commit(original.commit_hash, original.url_path)
-        repl_lines = get_file_content_at_commit(
-            repl_commit_hash,
-            repl_url_path,  # Use the specified path for replacement
-        )
-
-        if not orig_lines or not repl_lines:
+        if not orig_lines:
             return False, None, None  # Content not available
 
         try:
             orig_start_idx = original.line_start - 1
             orig_end_idx = (original.line_end or original.line_start) - 1
-
             if not (
                 0 <= orig_start_idx < len(orig_lines)
                 and 0 <= orig_end_idx < len(orig_lines)
                 and orig_start_idx <= orig_end_idx
             ):
                 return False, None, None  # Original line numbers out of bounds
-
             orig_content = [line.strip() for line in orig_lines[orig_start_idx : orig_end_idx + 1]]
             if not orig_content:
                 return False, None, None
-
             num_orig_lines = len(orig_content)
-
-            eff_tolerance: int
-            if custom_tolerance is not None:  # custom_tolerance is always absolute
-                eff_tolerance = custom_tolerance
-            elif self.global_prefs.tolerance_is_percentage:
-                # This part assumes repl_lines is available if we need to calculate percentage.
-                # The function structure ensures repl_lines are fetched early if the
-                # original.url_path is valid.
-                # If repl_lines is None here, it means the file content wasn't available,
-                # and the function would have returned (False, None, None) earlier.
-                if not repl_lines:  # Should ideally not happen if logic flows correctly
-                    self._vprint(
-                        f"Warning: Could not determine replacement content lines for percentage tolerance calculation for {repl_url_path}"
-                    )
-                    return False, None, None
-                num_lines_in_repl = len(repl_lines)
-                eff_tolerance = int(num_lines_in_repl * (self.global_prefs.tolerance_value / 100.0))
-            else:  # Absolute tolerance from self (self.tolerance_value)
-                eff_tolerance = self.global_prefs.tolerance_value
-
-            # Try all shifts from 0 outward, alternating `+shift` and `-shift`
-            for offset in range(0, eff_tolerance + 1):
-                for shift in (offset, -offset) if offset != 0 else (0,):
-                    shifted_repl_start_idx = orig_start_idx + shift
-                    if 0 <= shifted_repl_start_idx < len(repl_lines) and (
-                        shifted_repl_start_idx + num_orig_lines
-                    ) <= len(repl_lines):
-                        repl_content = [
-                            line.strip()
-                            for line in repl_lines[
-                                shifted_repl_start_idx : shifted_repl_start_idx + num_orig_lines
-                            ]
-                        ]
-                        if orig_content == repl_content:
-                            new_ls_repl = original.line_start + shift
-                            new_le_repl = (
-                                (original.line_end + shift)
-                                if original.line_end is not None
-                                else None
-                            )
-                            return True, new_ls_repl, new_le_repl
-
-            return False, None, None  # No match found
-
         except IndexError:
             return False, None, None
 
-    def _verify_line_content_from_url(
-        self,
-        original: PermalinkInfo,
-        repl_candidate_url: str,
-    ) -> bool:
-        """
-        Verify line content against a replacement candidate URL.
-        Fetch content if it's a GitHub URL. Trust non-GitHub URLs for content match.
-        Returns: match_found
-        """
-        if not original.url_path or original.line_start is None:
-            self._vprint(
-                f"⚠️ Warning: Original permalink {original.url} has no line numbers or path, cannot verify content."
-            )
-            return True
-
-        orig_lines = get_file_content_at_commit(original.commit_hash, original.url_path)
-        if not orig_lines:
-            self._vprint(
-                f"⚠️ Warning: Could not get original content for {original.url} to verify against {repl_candidate_url}"
-            )
-            return False
-
-        orig_start_idx = original.line_start - 1
-        orig_end_idx = (original.line_end or original.line_start) - 1
-        if not (
-            0 <= orig_start_idx < len(orig_lines)
-            and 0 <= orig_end_idx < len(orig_lines)
-            and orig_start_idx <= orig_end_idx
-        ):
-            return False
-
-        orig_content = [line.strip() for line in orig_lines[orig_start_idx : orig_end_idx + 1]]
-        if not orig_content:
-            return False
-        num_target_lines = len(orig_content)
-
-        repl_gh_info = parse_github_blob_permalink(repl_candidate_url)
-        if repl_gh_info:
-            _, _, _, _, repl_ls, _ = repl_gh_info
-            if repl_ls is None:
+        # 2. Get target lines (repl_lines)
+        repl_lines: Optional[List[str]] = None
+        if target_url:
+            target_gh_info = parse_github_blob_permalink(target_url)
+            if target_gh_info:  # It's a GitHub URL
+                repl_lines = fetch_raw_github_content_from_url(target_url)
+            else:  # Not a GitHub URL or unparseable
                 self._vprint(
-                    f"⚠️ Warning: GitHub URL {repl_candidate_url} has no line numbers. Cannot perform specific line content verification."
+                    f"⚠️ Verifying against non-GitHub or unparseable URL '{target_url}'. Assuming content matches."
                 )
-                return True
-            self._vprint(
-                f"Attempting to fetch content from GitHub URL: {repl_candidate_url} for verification."
-            )
-            repl_lines = fetch_raw_github_content_from_url(repl_candidate_url)
-            if repl_lines is None:
-                self._vprint(f"⚠️ Warning: Failed to fetch content from {repl_candidate_url}.")
-                return False
+                return True, None, None # Matches old behavior for non-GitHub URLs
+        elif target_commit_hash and target_file_path:
+            repl_lines = get_file_content_at_commit(target_commit_hash, target_file_path)
         else:
-            self._vprint(
-                f"⚠️ Warning: Verifying against non-GitHub or unparseable URL '{repl_candidate_url}'. Assuming content matches based on user input."
-            )
-            return True
+            raise ValueError("Either target_url or (target_commit_hash and target_file_path) must be provided.")
 
-        # At this point, repl_lines is from a GitHub URL, and repl_ls is not None.
+        if repl_lines is None: # Fetch failed for GitHub URL or git target
+            return False, None, None
+
+        # 3. Determine effective tolerance
+        eff_tolerance: int
+        if custom_abs_tolerance is not None:
+            eff_tolerance = custom_abs_tolerance
+        elif self.global_prefs.tolerance_is_percentage:
+            num_lines_in_repl = len(repl_lines)
+            eff_tolerance = int(num_lines_in_repl * (self.global_prefs.tolerance_value / 100.0))
+        else:  # Absolute tolerance from global prefs
+            eff_tolerance = self.global_prefs.tolerance_value
+
+        # 4. Perform matching logic with shifts
         try:
-            repl_start_idx = repl_ls - 1  # Expected start in the replacement content
-
-            if 0 <= repl_start_idx < len(repl_lines) and (repl_start_idx + num_target_lines) <= len(
-                repl_lines
-            ):
-                repl_content = [
-                    line.strip()
-                    for line in repl_lines[repl_start_idx : repl_start_idx + num_target_lines]
-                ]
-                return orig_content == repl_content
-            return False
+            # Try all shifts from 0 outward, alternating `+shift` and `-shift`
+            for offset in range(0, eff_tolerance + 1):
+                for shift in (offset, -offset) if offset != 0 else (0,):
+                    # Shift is relative to original's line numbers
+                    shifted_repl_start_idx = orig_start_idx + shift
+                    if 0 <= shifted_repl_start_idx < len(repl_lines) and \
+                       (shifted_repl_start_idx + num_orig_lines) <= len(repl_lines):
+                        repl_content_segment = [
+                            line.strip()
+                            for line in repl_lines[shifted_repl_start_idx : shifted_repl_start_idx + num_orig_lines]
+                        ]
+                        if orig_content == repl_content_segment:
+                            new_ls_repl = original.line_start + shift
+                            new_le_repl = (original.line_end + shift) if original.line_end is not None else new_ls_repl
+                            # Ensure line numbers are positive
+                            if new_ls_repl <= 0 or (new_le_repl is not None and new_le_repl <= 0):
+                                continue # Invalid shift result
+                            return True, new_ls_repl, new_le_repl
+            return False, None, None  # No match found after trying all shifts
         except IndexError:
-            return False
+            return False, None, None
+
 
     def _construct_repl_permalink(
         self,
@@ -416,10 +352,14 @@ class PermalinkFixerApp:
             if original.line_start is not None:
                 verify_url = update_github_url_with_line_numbers(current_external_url_base, current_ls, current_le)
                 self._vprint(f"Verifying external URL: {verify_url}")
-                if self._verify_line_content_from_url(original, verify_url):
+                match, v_ls, v_le = self._verify_content_match(
+                    original, target_url=verify_url, custom_abs_tolerance=temp_custom_abs_tolerance
+                )
+                if match:
                     print(f"✅ Content matches for external URL.")
-                    return "resolved", "", verify_url
-                return "lines_mismatch_external", f"Line content differs or cannot be verified for external URL {current_external_url_base}.", None
+                    final_url = update_github_url_with_line_numbers(current_external_url_base, v_ls, v_le)
+                    return "resolved", "", final_url
+                return "lines_mismatch_external", f"Line content differs or cannot be verified for external URL {current_external_url_base} (current tolerance: {temp_custom_abs_tolerance if temp_custom_abs_tolerance is not None else self.global_prefs.line_shift_tolerance_str}).", None
             # External URL, original had no lines
             final_url = update_github_url_with_line_numbers(current_external_url_base, current_ls, current_le)
             print(f"✅ Using external URL (no line verification needed): {final_url}")
@@ -440,9 +380,11 @@ class PermalinkFixerApp:
                     return "resolved", "", final_url
                 # Original had lines, verify them
                 self._vprint(f"Verifying content in ancestor {ancestor_commit[:8]}:{current_path_for_ancestor}...")
-                match, v_ls, v_le = self._verify_line_content(
-                    original, ancestor_commit, current_path_for_ancestor,
-                    custom_tolerance=temp_custom_abs_tolerance
+                match, v_ls, v_le = self._verify_content_match(
+                    original,
+                    target_commit_hash=ancestor_commit,
+                    target_file_path=current_path_for_ancestor,
+                    custom_abs_tolerance=temp_custom_abs_tolerance
                 )
                 if match:
                     final_url = self._construct_repl_permalink(original, ancestor_commit, current_path_for_ancestor, v_ls, v_le)
@@ -492,7 +434,11 @@ class PermalinkFixerApp:
 
                 if original.line_start is not None:
                     verify_url_ext = update_github_url_with_line_numbers(state["current_external_url_base"], state["current_ls"], state["current_le"])
-                    if not self._verify_line_content_from_url(original, verify_url_ext):
+                    match_found, _, _ = self._verify_content_match(
+                        original, target_url=verify_url_ext,
+                        custom_abs_tolerance=0,
+                    )
+                    if not match_found:
                         confirm_mismatch = input(f"    ⚠️ Content mismatch for this new URL. Use anyway? (y/n): ").strip().lower()
                         if confirm_mismatch != 'y':
                             print("    New URL not accepted. Try again.")

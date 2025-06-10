@@ -4,17 +4,16 @@ import webbrowser
 
 import requests
 
-from git_permalink_fixer.url_utils import parse_any_github_url_for_raw_content
-
+from git_permalink_fixer.url_utils import parse_github_blob_permalink
 
 
 def fetch_raw_github_content_from_url(github_file_url: str) -> Optional[List[str]]:
     """Fetches raw content from a GitHub file URL."""
-    parsed_details = parse_any_github_url_for_raw_content(github_file_url)
+    parsed_details = parse_github_blob_permalink(github_file_url)
     if not parsed_details:
         print(f"Error: Could not parse GitHub URL for raw content: {github_file_url}", file=sys.stderr)
         return None
-    owner, repo, ref, path = parsed_details
+    owner, repo, ref, path, _, _ = parsed_details
     raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
     try:
         response = requests.get(raw_url, timeout=10)

@@ -1,59 +1,48 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Optional, Tuple, Callable
 
-from git_permalink_fixer.constants import GITHUB_PERMALINK_RE, GITHUB_BLOB_PERMALINK_RE
-from git_permalink_fixer.permalink_info import PermalinkInfo
-
-
-def parse_any_github_url_for_raw_content(url: str) -> Optional[Tuple[str, str, str, str]]:
-    """
-    Parses a GitHub blob URL to extract components needed for fetching raw content.
-    Example: https://github.com/owner/repo/blob/ref/path/to/file.txt
-    Returns: (owner, repo, ref, path) or None
-    """
-    match = re.match(r"https://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)", url, re.IGNORECASE)
-    if match:
-        owner, repo, ref, path = match.groups()
-        path = path.split('#')[0].split('?')[0]  # Clean path from fragments or query params
-        return owner, repo, ref, path
-    return None
+from .constants import GITHUB_PERMALINK_RE
+from .permalink_info import PermalinkInfo
 
 
 def parse_github_blob_permalink(url: str) -> Optional[Tuple[str, str, str, str, Optional[int], Optional[int]]]:
     """
     Parses any GitHub file URL (blob view) to extract owner, repo, ref (commit/branch),
     path, and line numbers.
+    In this case, we accept any type of git ref; we don't accept tree URLs and empty paths.
     Returns: (owner, repo, ref, path, line_start, line_end) or None
     """
-    match = GITHUB_BLOB_PERMALINK_RE.match(url)
+    match = GITHUB_PERMALINK_RE.match(url)
     if not match:
         return None
-    owner, repo, ref, path_part, ls, le = match.groups()
-    # Sanitize path_part further if necessary, though regex tries to capture up to # or ?
-    # path_part might still contain query parameters if not starting with #
-    path_part = path_part.split('?')[0]
-    return owner, repo, ref, path_part, int(ls) if ls else None, int(le) if le else None
+    owner, repo, url_type, ref, url_path, line_start, line_end = match.groups()
+
+    if url_type != 'blob' or not url_path:
+        return None
+    return owner, repo, ref, url_path, int(line_start) if line_start else None, int(line_end) if line_end else None
 
 
-def parse_github_permalink(
+def parse_github_permalink_for_this_repo(
     url: str,
     git_owner: str,
     git_repo: str,
     normalize_repo_name_func: Optional[Callable] = None,
 ) -> Optional[PermalinkInfo]:
-    """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers."""
+    """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers.
+    Note in this case that for the ref, we only accept commit hashes, not branches or tags.
+    Returns None if the URL does not match the expected format or is not from the current repository.
+    """
 
     match = GITHUB_PERMALINK_RE.match(url)
     if not match:
         return None
 
-    owner, repo, commit_hash, url_path, line_start, line_end = match.groups()
+    owner, repo, _, commit_hash, url_path, line_start, line_end = match.groups()
 
-    # Validate commit hash length
-    if len(commit_hash) < 7 or len(commit_hash) > 40:
+    # Validate that the commit_hash is a hexadecimal hash and not a branch or tag
+    if not commit_hash or not all(c in '0123456789abcdefABCDEF' for c in commit_hash) or not (7 <= len(commit_hash) <= 40):
         return None
 
     # Only process URLs from the current repository
@@ -75,9 +64,12 @@ def parse_github_permalink(
     )
 
 
-def update_github_url_with_line_numbers(base_url: str, line_start: Optional[int], line_end: Optional[int]) -> str:
+def update_github_url_with_line_numbers(base_url: Optional[str], line_start: Optional[int], line_end: Optional[int]) -> str:
     """Updates a given URL with new line number fragments, removing old ones.
     """
+    if base_url is None:
+        raise ValueError("Base URL cannot be None")
+
     url_no_frag = base_url.split('#')[0]
     if line_start is not None:
         if line_end is not None and line_end != line_start:

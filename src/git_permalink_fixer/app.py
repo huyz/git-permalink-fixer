@@ -109,7 +109,7 @@ class PermalinkFixerApp:
 
         self._vprint(f"Searching for GitHub permalinks in {self.repo_root}")
 
-        found_count = 0
+        global_found_count = 0
         for file_path in self.repo_root.rglob("*"):
             # Determine if the file should be processed or skipped
             process_this_file = True
@@ -142,8 +142,8 @@ class PermalinkFixerApp:
                             file_path, "r", encoding="utf-8", errors="ignore"
                         ) as ignored_file:
                             lines = ignored_file.readlines()
-                        # Use a temporary count, don't affect main found_count or detailed logging
-                        permalinks_in_ignored_file, _, _ = extract_permalinks_from_file(
+                        # Use a temporary count, don't affect main global_found_count or detailed logging
+                        permalinks_in_ignored_file, _ = extract_permalinks_from_file(
                             file_path,
                             lines,
                             self.repo_root,
@@ -169,15 +169,14 @@ class PermalinkFixerApp:
 
                 (
                     permalinks_in_file,
-                    found_count,
-                    _,
+                    global_found_count
                 ) = extract_permalinks_from_file(
                     file_path,
                     lines,
                     self.repo_root,
                     self.git_owner,
                     self.git_repo,
-                    found_count,
+                    global_found_count,
                     self._normalize_repo_name,
                 )
                 for pl in permalinks_in_file:

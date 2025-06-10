@@ -7,7 +7,7 @@ from typing import Optional, List, Tuple
 class PermalinkInfo:
     url: str
     commit_hash: str
-    url_path: str
+    url_path: Optional[str]
     line_start: Optional[int]
     line_end: Optional[int]
     found_in_file: Path

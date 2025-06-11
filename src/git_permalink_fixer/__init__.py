@@ -46,7 +46,7 @@ import argparse
 import sys
 
 from .global_prefs import GlobalPreferences
-from .session_prefs import SessionPreferences
+from .session_prefs import SessionPreferences, FetchMode
 from .app import PermalinkFixerApp
 
 
@@ -107,9 +107,14 @@ def main():
         "Set to '0' or '0%%' to disable shifting.",
     )
     parser.add_argument(
-        "--auto-fetch-commits",
-        action="store_true",
-        help="Automatically attempt to fetch commits not found locally from the 'origin' remote.",
+        "--fetch-mode",
+        type=str,
+        choices=[mode.value for mode in FetchMode],
+        default=FetchMode.PROMPT.value,
+        help="Behavior for fetching commits not found locally from 'origin' remote (default: %(default)s).\n"
+             "  'prompt': Ask for each commit or group.\n"
+             "  'always': Automatically fetch all missing commits.\n"
+             "  'never': Never fetch missing commits.",
     )
     parser.add_argument(
         "--auto-accept-replace",
@@ -133,7 +138,7 @@ def main():
         help="Enable non-interactive mode. This is a shorthand for setting:\n"
         "  --auto-accept-replace\n"
         "  --auto-fallback tag\n" # Default to tagging for preservation in non-interactive
-        "  --auto-fetch-commits\n"
+        "  --fetch-mode always\n"
         "User will not be prompted for decisions.",
     )
     parser.add_argument(
@@ -148,11 +153,11 @@ def main():
     if args.non_interactive:
         args.auto_accept_replace = True
         args.auto_fallback = "tag" # Default fallback for non-interactive is to tag
-        args.auto_fetch_commits = True
+        args.fetch_mode = FetchMode.ALWAYS_FETCH.value
         if args.verbose:
             print(
                 f"ℹ️ Non-interactive mode enabled: --auto-accept-replace, --auto-fallback={args.auto_fallback},"
-                " and --auto-fetch-commits are active."
+                f" and --fetch-mode={args.fetch_mode} are active."
             )
 
     try:

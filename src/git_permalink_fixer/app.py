@@ -8,7 +8,6 @@ from .examination_set import ExaminationSet
 from .file_ops import extract_permalinks_from_file, should_skip_file_search
 from .git_utils import (
     create_git_tag,
-    fetch_commit_if_missing,
     file_exists_at_commit,
     find_closest_ancestor_in_main,
     gen_git_tag_name,
@@ -29,6 +28,10 @@ from .url_utils import parse_github_blob_permalink, update_github_url_with_line_
 from .web_utils import fetch_raw_github_content_from_url, open_urls_in_browser
 
 
+from .session_prefs import FetchMode
+from .git_utils import is_commit_available_locally, fetch_commit_missing_locally
+
+
 class ResolutionState(TypedDict):
     current_is_external: bool
     current_external_url_base: Optional[str]
@@ -36,7 +39,6 @@ class ResolutionState(TypedDict):
     current_ls: Optional[int]
     current_le: Optional[int]
     temp_custom_abs_tolerance: Optional[int]
-
 
 class PermalinkFixerApp:
     repo_root: Path
@@ -62,7 +64,7 @@ class PermalinkFixerApp:
         self._vprint(
             f"Respect gitignore: {self.global_prefs.respect_gitignore}, "
             f"Dry run: {self.global_prefs.dry_run}, Auto fetch: {self.session_prefs.auto_fetch_commits}, "
-            f"Auto accept replace: {self.session_prefs.auto_accept_replace}, Auto fallback: {self.session_prefs.auto_fallback}"
+            f"Fetch mode: {self.session_prefs.fetch_mode.value}, Auto accept replace: {self.session_prefs.auto_accept_replace}, Auto fallback: {self.session_prefs.auto_fallback}"
         )
         if self.global_prefs.output_json_report_path:
             self._vprint(f"JSON Report output: {self.global_prefs.output_json_report_path}")
@@ -1091,19 +1093,18 @@ class PermalinkFixerApp:
 
         return pending_tag_for_commit, replacements_for_this_commit_group
 
-    def _prompt_to_fetch_commit(self, commit_hash: str) -> bool:
+    def _prompt_user_about_fetching_this_commit(self, commit_hash: str) -> bool:
         """
         Prompts the user whether to fetch a missing commit.
-        This method can modify self.auto_fetch_commits or self._remember_skip_all_fetches.
+        Updates self.session_prefs.fetch_mode if user chooses 'ya' or 'na'.
+        Returns True if the user wants to fetch this specific commit ('y' or 'ya').
         """
         while True:
             print(f"\n❓ Look for {commit_hash} at the remote?")
             print("  y) Yes, fetch this commit from 'origin'")
-            print(
-                "    ya) Yes to all - fetch this and all subsequent missing commits automatically"
-            )
+            print("    ya) Yes to all - fetch this and all subsequent missing commits (sets fetch-mode to 'always')")
             print("  n) No, do not fetch this commit")
-            print("    na) No to all - skip fetching for this and all subsequent missing commits")
+            print("    na) No to all - skip fetching for this and all subsequent missing commits (sets fetch-mode to 'never')")
             choice = input("     Choose an action (y/n/ya/na): ").strip().lower()
 
             if choice == "y":
@@ -1111,11 +1112,12 @@ class PermalinkFixerApp:
             if choice == "n":
                 return False
             if choice == "ya":
-                self.session_prefs.auto_fetch_commits = True  # Enable for future calls
+                self.session_prefs.fetch_mode = FetchMode.ALWAYS_FETCH
+                print("    ℹ️ Fetch mode set to 'always' for subsequent missing commits.")
                 return True
             if choice == "na":
-                self.session_prefs.remember_skip_all_fetches = True  # Prevent future prompts
-                self.session_prefs.auto_fetch_commits = False  # Ensure auto-fetch is off
+                self.session_prefs.fetch_mode = FetchMode.NEVER_FETCH
+                print("    ℹ️ Fetch mode set to 'never' for subsequent missing commits.")
                 return False
             print("   Invalid choice. Please try again.")
 
@@ -1125,8 +1127,6 @@ class PermalinkFixerApp:
         """
         Processes a single commit hash and all its associated permalinks for the Examination phase.
         Determines if auto-actions apply or if interactive prompting is needed.
-        It can modify self.session_prefs.auto_fetch_commits and self.session_prefs._remember_skip_all_fetches
-        based on user input if a prompt for fetching is shown.
 
         Returns lists of (commit_hash, commit_info) tuples for tagging (or None) and
         (permalink_info, repl_url) tuples for replacements for this commit.
@@ -1138,17 +1138,31 @@ class PermalinkFixerApp:
         index_msg = f"Commit #{index + 1}/{total}: {commit_hash[:8]} ({len(commit_permalinks)} permalink(s))"
         print(f"\n[*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
 
-        can_prompt_for_fetch = (
-            not self.session_prefs.auto_fetch_commits
-            and not self.session_prefs.remember_skip_all_fetches
-        )
+        commit_available = is_commit_available_locally(commit_hash)
+        if not commit_available:
+            print(f"  ❗ Commit {commit_hash} does not exist in this repository")
+            should_attempt_fetch_this_commit = False
 
-        if not fetch_commit_if_missing(
-            commit_hash,
-            self.session_prefs.auto_fetch_commits,
-            self._vprint,
-            self._prompt_to_fetch_commit if can_prompt_for_fetch else None,
-        ):
+            if self.session_prefs.fetch_mode == FetchMode.ALWAYS_FETCH:
+                self._vprint(f"  🤖 Auto-fetching commit {commit_hash} as per fetch-mode=always.")
+                should_attempt_fetch_this_commit = True
+            elif self.session_prefs.fetch_mode == FetchMode.PROMPT:
+                should_attempt_fetch_this_commit = self._prompt_user_about_fetching_this_commit(commit_hash)
+            # If FetchMode.NEVER_FETCH, should_attempt_fetch_this_commit remains False
+
+            if should_attempt_fetch_this_commit:
+                if fetch_commit_missing_locally(commit_hash, self._vprint):
+                    commit_available = is_commit_available_locally(commit_hash) # Re-verify
+                    if not commit_available:
+                        print(f"  ❌ Fetch for {commit_hash} seemed to succeed, but commit still not found.")
+                else:
+                    # Fetch failed, commit still not available
+                    print(f"  ❌ Fetch attempt for {commit_hash} failed or commit still not found.")
+            else: # Not attempting fetch
+                self._vprint(f"  Skipping fetch for commit {commit_hash} (fetch-mode is 'never' or user declined).")
+
+        if not commit_available:
+            print(f"  ❌ Commit {commit_hash} is not available. Skipping processing for this commit.")
             return None, pending_repls  # Skip if commit unavailable
 
         commit_info = get_commit_info(commit_hash)

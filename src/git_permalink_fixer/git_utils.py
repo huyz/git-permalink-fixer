@@ -198,63 +198,7 @@ def create_git_tag(tag_name: str, commit_hash: str, tag_message: str, dry_run: b
         return False
 
 
-def fetch_commit_if_missing(
-    commit_hash: str,
-    auto_fetch_commits: bool,
-    vprint_func,
-    prompt_func: Optional[Callable[[str], bool]] = None
-) -> bool:
-    """
-    Checks if a commit exists locally. If not, prompts/auto-fetches it.
-    The prompt_func, if called, can modify the effective auto_fetch_commits state for subsequent operations.
-    Returns True if the commit is available after the process, False otherwise.
-    """
-    if commit_exists(commit_hash):
-        return True
-
-    # This message is for the user regardless of verbosity.
-    print(f"  ❗ Commit {commit_hash} does not exist in this repository")
-    should_try_fetch = False
-
-    if auto_fetch_commits:
-        vprint_func(f"  🤖 Auto-fetching commit {commit_hash} as per settings.")
-        should_try_fetch = True
-    elif prompt_func: # If auto-fetch is not on, and a prompt function is available
-        should_try_fetch = prompt_func(commit_hash) # This prompt can alter global fetch behavior
-
-    if should_try_fetch: # If decided to fetch (either by auto_fetch or by prompt_func returning True)
-        vprint_func(f"  Attempting to fetch commit {commit_hash}...")
-        try:
-            # Using --no-tags to avoid fetching all tags, and --no-write-commit-graph for speed if not needed.
-            # Depth is large to ensure we get the commit if it's far back.
-            result = subprocess.run(
-                ["git", "fetch", "origin", "--depth=100000", commit_hash, "--no-tags", "--no-write-commit-graph"],
-                capture_output=True,
-                text=True,
-                timeout=120, # Increased timeout for potentially large fetches
-                check=False, # Check return code manually
-            )
-            if result.returncode == 0:
-                print(f"  🔽 Successfully fetched commit {commit_hash}")
-                if not commit_exists(commit_hash): # Re-verify
-                    print(f"Error: Commit {commit_hash} still not found after successful-looking fetch command.", file=sys.stderr)
-                    return False
-                return True
-            print(f"Error: Failed to fetch commit {commit_hash}. STDERR: {result.stderr.strip()}", file=sys.stderr)
-            return False
-        except subprocess.CalledProcessError as e:
-            stderr_output = e.stderr.strip() if e.stderr else "N/A"
-            print(f"Error: A git command during fetch operation for {commit_hash} failed. Command '{subprocess.list2cmdline(e.cmd)}' (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
-            return False
-        except subprocess.TimeoutExpired as e:
-            print(f"Error: Timeout during fetch operation for {commit_hash}: {e}", file=sys.stderr)
-            return False
-    else:
-        vprint_func(f"  Skipping fetch for commit {commit_hash} (not found locally, auto-fetch disabled, and/or user declined).")
-        return False
-
-
-def commit_exists(commit_hash: str) -> bool:
+def is_commit_available_locally(commit_hash: str) -> bool:
     """Check if a commit exists in the repository."""
     try:
         result = subprocess.run(
@@ -269,6 +213,36 @@ def commit_exists(commit_hash: str) -> bool:
         print(f"Error: Checking existence of commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
         return False
 
+def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable) -> bool:
+    """
+    Attempts to fetch a specific commit from the 'origin' remote.
+    Returns True if the fetch command executes successfully (return code 0), False otherwise.
+    Note: A successful command doesn't guarantee the commit is now available,
+    so the caller should re-check with is_commit_available_locally.
+    """
+    vprint_func(f"  Attempting to fetch commit {commit_hash} from 'origin'...")
+    try:
+        # Using --no-tags to avoid fetching all tags, and --no-write-commit-graph for speed if not needed.
+        # Depth is large to ensure we get the commit if it's far back.
+        result = subprocess.run(
+            ["git", "fetch", "origin", "--depth=100000", commit_hash, "--no-tags", "--no-write-commit-graph"],
+            capture_output=True,
+            text=True,
+            timeout=120, # Increased timeout for potentially large fetches
+            check=False, # Check return code manually
+        )
+        if result.returncode == 0:
+            print(f"  🔽 Fetch command for commit {commit_hash} completed successfully.")
+            return True
+        print(f"Error: Failed to fetch commit {commit_hash}. Git command exited with {result.returncode}. STDERR: {result.stderr.strip()}", file=sys.stderr)
+        return False
+    except subprocess.CalledProcessError as e: # Should not happen with check=False
+        stderr_output = e.stderr.strip() if e.stderr else "N/A"
+        print(f"Error: A git command during fetch operation for {commit_hash} failed. Command '{subprocess.list2cmdline(e.cmd)}' (rc={e.returncode}). Stderr: '{stderr_output}'", file=sys.stderr)
+        return False
+    except subprocess.TimeoutExpired as e:
+        print(f"Error: Timeout during fetch operation for {commit_hash}: {e}", file=sys.stderr)
+        return False
 
 def get_commit_info(commit_hash: str) -> Optional[Dict[str, str]]:
     """Get commit information."""

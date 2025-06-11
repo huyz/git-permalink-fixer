@@ -28,8 +28,11 @@ jobs:
     - name: Lint
       run: rye lint
 
+    - name: Pylint
+      run: rye run pylint src
+
     - name: MyPy
-      run: mypy src
+      run: rye run mypy src
 
     - name: Test with pytest
       run: rye run pytest

@@ -68,6 +68,8 @@ dev-dependencies = [
     # pytest needs setuptools and rye doesn't install it by default
     "setuptools>=80.9.0",
     "pytest-cov>=6.1.1",
+    "mypy>=1.16.0",
+    "pylint>=3.3.7",
 ]
 line-length = 120  # Default is 88
 
@@ -89,13 +91,13 @@ ignore = ["F541"]  # Ignore unused variable in f-string
 
 [tool.mypy]
 exclude_gitignore = true
-# 2025-06-08 Untested and seems unnecessarsy with https://github.com/szabope/mypy-pycharm-plugin
-#exclude = ['[.]venv', '^(.*/|)[.]?venv/.*']
+exclude = ["tests"]
 
 [tool.pylint.config]
 disable = ["missing-module-docstring", "missing-class-docstring", "missing-function-docstring", "line-too-long",
-"too-many-locals", "too-many-arguments", "too-many-positional-arguments", "too-many-branches", "too-many-statements",
-"too-many-return-statements", "too-many-instance-attributes", "f-string-without-interpolation"]
+    "too-many-lines", "too-many-locals", "too-many-arguments", "too-many-positional-arguments", "too-many-branches",
+    "too-many-statements", "too-many-nested-blocks", "too-many-return-statements", "too-many-instance-attributes",
+    "too-few-public-methods", "too-many-public-methods", "f-string-without-interpolation"]
 
 [tool.pylint.MASTER]
 # Ignore dotfiles and directories, venv, and tests

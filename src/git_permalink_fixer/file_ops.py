@@ -89,12 +89,10 @@ def extract_permalinks_from_file(
 
         if permalinks_found_on_this_line:
             if not file_header_printed:
-                logger.debug(f"\n- In `{file_path.relative_to(repo_root)}`:")
+                logger.debug("\n- In %s:", file_path.relative_to(repo_root))
                 file_header_printed = True
-            logger.debug(f"  - Line {line_num}: {line_content.strip()}")
+            logger.debug("  - Line %d: %s", line_num, line_content.strip())
             for p_info in permalinks_found_on_this_line:
                 current_global_found_count += 1
-                logger.debug(
-                    f"    {current_global_found_count:2d}. 📍 Found permalink: {p_info.commit_hash[:8]}"
-                )
+                logger.debug(f"    %2d. 📍 Found permalink: %s", current_global_found_count, p_info.commit_hash[:8])
     return permalinks_in_file, current_global_found_count

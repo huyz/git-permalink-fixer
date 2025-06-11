@@ -187,6 +187,41 @@ class PermalinkFixerApp:
 
         return examination_set
 
+    def _display_content_mismatch(
+        self,
+        original_permalink_info: PermalinkInfo,
+        original_content_snippet: List[str],
+        target_description: str, # e.g., "ancestor commit X:path/to/file" or "URL Y"
+        target_lines_content: Optional[List[str]],
+        eff_tolerance: int
+    ):
+        """Helper to log detailed mismatch information if verbose."""
+        if not self.global_prefs.verbose:
+            return
+
+        self._vprint(f"  ⚠️ Content mismatch for {original_permalink_info.url_path} L{original_permalink_info.line_start}-{original_permalink_info.line_end} in {target_description} (tolerance: {eff_tolerance}).")
+        self._vprint(f"    ⚰️ Original content ({len(original_content_snippet)} lines):")
+        for line in original_content_snippet:
+            self._vprint(f"      | {line}")
+
+        if target_lines_content and original_permalink_info.line_start is not None:
+            # Show what the content at the *original* line numbers (0 shift) in the target looks like
+            orig_start_idx = original_permalink_info.line_start - 1
+            num_orig_lines = len(original_content_snippet)
+            if 0 <= orig_start_idx < len(target_lines_content) and \
+               (orig_start_idx + num_orig_lines) <= len(target_lines_content):
+                target_snippet_at_zero_shift = [
+                    line.strip()
+                    for line in target_lines_content[orig_start_idx : orig_start_idx + num_orig_lines]
+                ]
+                self._vprint(f"    🎯 Target content at original line numbers ({len(target_snippet_at_zero_shift)} lines):")
+                for line in target_snippet_at_zero_shift:
+                    self._vprint(f"      | {line}")
+            else:
+                self._vprint(f"    ❌ Target content at original line numbers could not be determined (out of bounds).")
+        elif not target_lines_content:
+            self._vprint(f"    ❌ Target content could not be fetched or was empty.")
+
     def _verify_content_match(
         self,
         original: PermalinkInfo,  # Defines original content source (commit, path, lines)
@@ -234,10 +269,14 @@ class PermalinkFixerApp:
             return False, None, None
 
         # 2. Get target lines (repl_lines)
-        repl_lines: Optional[List[str]] = None
+        repl_lines: Optional[List[str]]
+        repl_ls: Optional[int] = None
         if target_url:
             target_gh_info = parse_github_blob_permalink(target_url)
             if target_gh_info:  # It's a GitHub URL
+                _, _, _, _, repl_ls, repl_le = target_gh_info
+                if repl_ls is None:
+                    return True, None, None  # No lines specified in URL fragment. User should know what they're doing
                 repl_lines = fetch_raw_github_content_from_url(target_url)
             else:  # Not a GitHub URL or unparseable
                 self._vprint(
@@ -267,21 +306,30 @@ class PermalinkFixerApp:
             # Try all shifts from 0 outward, alternating `+shift` and `-shift`
             for offset in range(0, eff_tolerance + 1):
                 for shift in (offset, -offset) if offset != 0 else (0,):
-                    # Shift is relative to original's line numbers
-                    shifted_repl_start_idx = orig_start_idx + shift
+                    # Shift is relative to original's line numbers for git path, but relative to replacement lines for target_url
+                    if target_url and repl_ls is not None:
+                        shifted_repl_start_idx = repl_ls - 1 + shift
+                    else:
+                        shifted_repl_start_idx = orig_start_idx + shift
                     if 0 <= shifted_repl_start_idx < len(repl_lines) and \
                        (shifted_repl_start_idx + num_orig_lines) <= len(repl_lines):
-                        repl_content_segment = [
+                        repl_content = [
                             line.strip()
                             for line in repl_lines[shifted_repl_start_idx : shifted_repl_start_idx + num_orig_lines]
                         ]
-                        if orig_content == repl_content_segment:
-                            new_ls_repl = original.line_start + shift
-                            new_le_repl = (original.line_end + shift) if original.line_end is not None else new_ls_repl
+                        if orig_content == repl_content:
+                            new_repl_ls = shifted_repl_start_idx + 1
+                            new_repl_le = new_repl_ls + num_orig_lines - 1 if num_orig_lines > 1 else None
                             # Ensure line numbers are positive
-                            if new_ls_repl <= 0 or (new_le_repl is not None and new_le_repl <= 0):
+                            if new_repl_ls <= 0 or (new_repl_le is not None and new_repl_le <= 0):
                                 continue # Invalid shift result
-                            return True, new_ls_repl, new_le_repl
+                            return True, new_repl_ls, new_repl_le
+            self._display_content_mismatch(
+                original, orig_content,
+                target_url if target_url else f"{target_commit_hash}:{target_file_path}",
+                None, # No target lines
+                0 # Effective tolerance doesn't matter here
+            )
             return False, None, None  # No match found after trying all shifts
         except IndexError:
             return False, None, None

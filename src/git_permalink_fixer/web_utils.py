@@ -55,12 +55,10 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
             print(f"❌ API Fallback: Path {path} is not a file (type: {data.get('type', 'directory' if isinstance(data, list) else 'unknown')}).", file=sys.stderr)
             return None
         if "content" in data and data.get("encoding") == "base64":
-            print(f"ℹ️ API Fallback: Found base64 content for {path}. Decoding...", file=sys.stderr)
             decoded_content = base64.b64decode(data["content"]).decode("utf-8")
             if not decoded_content:
                 print(f"⚠️ API Fallback: Decoded content for {path} is empty.", file=sys.stderr)
                 return None
-            print(f"ℹ️ API Fallback: Successfully decoded content for {path}.", file=sys.stderr)
 
             # Save decoded content to a temporary file
             # This is not necessary for the return value, but can be useful for debugging.
@@ -69,13 +67,11 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
 
             return decoded_content.splitlines()
         if "download_url" in data and data["download_url"]:
-            print(f"ℹ️ API Fallback: Using download_url for {path}. Fetching content...", file=sys.stderr)
             response_download = requests.get(data["download_url"], headers=headers, timeout=20) # Use token for download_url
             response_download.raise_for_status()
             if not response_download.text:
                 print(f"⚠️ API Fallback: Downloaded content for {path} is empty.", file=sys.stderr)
                 return None
-            print(f"ℹ️ API Fallback: Successfully fetched content from download_url for {path}.", file=sys.stderr)
             return response_download.text.splitlines()
         print(f"❌ API Fallback: No usable content or download_url in JSON for {path}.", file=sys.stderr)
         return None

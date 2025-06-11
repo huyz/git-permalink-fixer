@@ -57,6 +57,8 @@ class PermalinkFixerApp:
         self.remote_url = get_remote_url()
         self.git_owner, self.git_repo = get_github_info_from_url(self.remote_url)
 
+        self.resolved_repl_cache: Dict[str, str] = {}
+
     def _print_initial_summary(self):
         self._vprint(f"Repository: {self.repo_root}")
         self._vprint(f"GitHub: {self.git_owner}/{self.git_repo}")
@@ -621,6 +623,13 @@ class PermalinkFixerApp:
             )
             print("  a) Abort replacement for this permalink (skip)")
 
+        # Check cache first
+        if original.url in self.resolved_repl_cache:
+            cached_repl_url = self.resolved_repl_cache[original.url]
+            self._vprint(f"  ✅ Found cached replacement for {original.url}: {cached_repl_url}")
+            return cached_repl_url, False # Not aborted
+
+
         state: ResolutionState = {
             "current_is_external": ancestor_commit is None,
             "current_external_url_base": None,
@@ -885,6 +894,8 @@ class PermalinkFixerApp:
 
         if action in ["replace", "replace_commit_group"]:
             if repl_url:
+                # Cache the successful resolution
+                self.resolved_repl_cache[original.url] = repl_url
                 return action, repl_url
             self._vprint(f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Falling back to skip.")
             action = "skip"

@@ -489,7 +489,7 @@ class PermalinkFixerApp:
                         custom_abs_tolerance=0,
                     )
                     if not match_found:
-                        confirm_mismatch = input(f"    ⚠️ Content mismatch for this new URL. Use anyway? (y/n): ").strip().lower()
+                        confirm_mismatch = input(f"  ⚠️ Content mismatch for this new URL. Use anyway? (y/n): ").strip().lower()
                         if confirm_mismatch != 'y':
                             print("    New URL not accepted. Try again.")
                             return "continue_loop", state
@@ -622,12 +622,12 @@ class PermalinkFixerApp:
             print("  a) Abort replacement for this permalink (skip)")
 
         state: ResolutionState = {
-            "current_is_external": ancestor_commit is None, # type: ignore
-            "current_external_url_base": None, # type: ignore
-            "current_path_for_ancestor": original.url_path if ancestor_commit else None, # type: ignore
-            "current_ls": original.line_start, # type: ignore
-            "current_le": original.line_end, # type: ignore
-            "temp_custom_abs_tolerance": None, # type: ignore
+            "current_is_external": ancestor_commit is None,
+            "current_external_url_base": None,
+            "current_path_for_ancestor": original.url_path if ancestor_commit else None,
+            "current_ls": original.line_start,
+            "current_le": original.line_end,
+            "temp_custom_abs_tolerance": None,
         }
 
         if state["current_is_external"]:
@@ -675,7 +675,7 @@ class PermalinkFixerApp:
                 # Loop again, effectively forcing user to fix or abort
             # For "state_updated_continue", "open_urls_and_continue", "invalid_choice_continue", just loop.
 
-    def _prompt_user_for_final_action(
+    def _prompt_user_for_action(
         self,
         original: PermalinkInfo,
         repl_url: Optional[str],  # The fully formed candidate replacement URL
@@ -683,23 +683,25 @@ class PermalinkFixerApp:
         auto_action_directive_for_commit: Optional[str] = None, # From 'rc' or 'sc'
     ) -> tuple[str, Optional[str]]:
         """
-        Prompts the user for the final action (replace, tag, skip) and handles remembering choices.
+        Prompts the user for the action (replace, tag, skip) for a permalink and handles remembering
+        choices.
         This is also where --auto-accept-replace and --auto-fallback flags take effect.
         Returns: (action_string, value_to_remember_if_any)
         """
-        # Determine remembered action based on current context
+
+        ### First, determine remembered action based on current context
+
         auto_chosen_action: Optional[str] = None
 
         # Priority 1: Commit-level auto directive (from 'rc' or 'sc' for this commit group)
-        if auto_action_directive_for_commit == "replace" and repl_url:
+        if repl_url and auto_action_directive_for_commit == "replace":
             auto_chosen_action = "replace"
             self._vprint(f"    🤖 Commit-level 'replace' directive: Auto-choosing 'replace' for '{original.url[-50:]}'.")
-        elif auto_action_directive_for_commit == "skip":
+        elif not repl_url and auto_action_directive_for_commit == "skip":
             # `sc` (skip commit group) is a fallback choice.
             # It applies if no replacement URL is available for the current permalink.
-            if not repl_url: # Fallback context
-                auto_chosen_action = "skip"
-                self._vprint(f"    🤖 Commit-level 'skip' directive (fallback): Auto-choosing 'skip' for '{original.url[-50:]}'.")
+            auto_chosen_action = "skip"
+            self._vprint(f"    🤖 Commit-level 'skip' directive (fallback): Auto-choosing 'skip' for '{original.url[-50:]}'.")
 
         # Priority 2: Global auto flags (--auto-accept-replace, --auto-fallback)
         # Only if not already decided by commit-level directive
@@ -716,12 +718,12 @@ class PermalinkFixerApp:
                     auto_chosen_action = "skip"
                     self._vprint(f"    🤖 --auto-fallback=skip: Auto-choosing 'skip' for '{original.url[-50:]}'.")
 
-        # Priority 3: Global remembered choices ('ra', 'ta', 'sa')
+        # Priority 3: Remembered choices ('ra', 'ta', 'sa'), scoped to two types of prompt menus
+        # (with or without repl_url)
         # Only if not already decided by commit-level or global auto flags
         if not auto_chosen_action:
             if repl_url:  # Replacement is possible
-                # 'replace_commit_group' from 'ra' means always `replace` if possible
-                if self.session_prefs.remembered_action_with_repl in ["replace", "replace_commit_group"]:
+                if self.session_prefs.remembered_action_with_repl == "replace":
                     auto_chosen_action = "replace"
                     self._vprint(f"    🤖 Remembered 'replace' (global): Auto-choosing 'replace' for '{original.url[-50:]}'.")
             else:  # Fallback
@@ -733,14 +735,10 @@ class PermalinkFixerApp:
                     self._vprint(f"    🤖 Remembered 'skip' (global fallback): Auto-choosing 'skip' for '{original.url[-50:]}'.")
 
         if auto_chosen_action:
-            # Auto-actions should not select "untag". If commit is slated and auto says "tag", it's still "tag".
-            if auto_chosen_action == "untag":
-                 # This should not be reachable if logic is correct, force prompt if it is.
-                pass # Fall through to interactive prompt
-            else:
-                return auto_chosen_action, None # Auto actions don't set "remember_this_choice" for future global use
+            return auto_chosen_action, None # Auto actions don't set "remember_this_choice" for future global use
 
-        # If no auto-action was taken, proceed to display the interactive prompt:
+        ### Then, If no auto-action was taken, proceed to display the interactive prompt
+
         print("\n❓ ACTIONS:")
         print(
             f"  o) Open {'original & replacement URLs' if repl_url else 'original URL'} in browser"
@@ -750,17 +748,17 @@ class PermalinkFixerApp:
         if repl_url:
             print("  r) Replace with suggested URL (i.e., update reference)")
             print("    rc) Auto-accept 'Replace' for rest of Commit group")
-            print("    ra) Auto-accept 'Replace' from now on")  # Make wording general
+            print("    ra) Auto-accept 'Replace' for All commits from now on")
 
         if is_commit_slated_for_tagging:
             print("  -t) UNTAG this commit")
         else:
             print("  t) Tag commit (i.e., preserve exact permalink)")
-            print("    ta) Automatically fall back to tagging")
+            print("    ta) Automatically fall back to tagging for All commits from now on")
 
         print("  s) Skip this permalink")
-        print("    sc) Automatically fall back to skipping for the rest of this Commit group")
-        print("    sa) Automatically fall back to skipping")
+        print("    sc) Automatically fall back to skipping for rest of Commit group")
+        print("    sa) Automatically fall back to skipping for All commits from now on")
 
         while True:
             action: Optional[str] = None
@@ -785,13 +783,10 @@ class PermalinkFixerApp:
                 open_urls_in_browser(urls_to_open_list)
                 continue
             if menu_choice == "r" and repl_url:
-                auto_chosen_action = "replace"
                 action = "replace"
             elif menu_choice == "rc" and repl_url:
                 action = "replace_commit_group"
-            elif (
-                menu_choice == "ra" and repl_url
-            ):  # Remember based on if ancestor/replacement was possible
+            elif menu_choice == "ra" and repl_url:
                 action, remember_this_choice = "replace", "replace"
             elif menu_choice == "t" and not is_commit_slated_for_tagging:
                 action = "tag"
@@ -812,20 +807,21 @@ class PermalinkFixerApp:
                 return action, remember_this_choice
             print("    Invalid choice. Please try again.")
 
-    def _prompt_user_for_action_on_permalink(
+    def _process_permalink(
         self,
         original: PermalinkInfo,
         ancestor_commit: Optional[str],  # For context, even if user provides external URL
-        file_path: Path,
         index: int,
         total: int,
         is_commit_slated_for_tagging: bool,
         auto_action_directive_for_commit: Optional[str] = None, # "replace" or "skip"
     ) -> Tuple[str, Optional[str]]:  # Returns (action_str, final_repl_url_if_action_is_replace)
         """
-        Prompt user to confirm replacement permalink.
-        Returns a tuple: (action_str, final_repl_url_string, trigger_rc_bool).
-        The URL string is only present if action_str is "replace".
+        Process a permalink (for a given file, for a given commit), including verifying content match,
+        prompting for replacement, and handling user actions.
+
+        Returns a tuple: (action, repl_url, trigger_rc_bool).
+        repl_url is only set if `action` is "replace".
         """
         index_msg = f"Permalink #{index + 1}/{total} for {original.commit_hash[:8]}"
         print(f"\n    [*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
@@ -840,55 +836,47 @@ class PermalinkFixerApp:
             print(f"🏷️ Commit {original.commit_hash[:8]} is currently slated to be TAGGED.")
         print()
 
-        # These store the current best candidate for replacement
-        spec_repl_url: Optional[str] = None  # A fully formed URL if user provides one
+        repl_url: Optional[str] = None  # A fully formed URL if user provides one
 
         # --- Stage 1: Resolve File Path/URL for Replacement ---
         if ancestor_commit:  # Only offer path/URL resolution if an ancestor context exists
-            ancestor_info = get_commit_info(ancestor_commit)
-            if ancestor_info:
+            if ancestor_info := get_commit_info(ancestor_commit):
                 self._vprint(
                     f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}"
                 )
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
             if original.url_path:  # Only if the original permalink pointed to a file
-                # Path resolution and line verification are now combined
-                spec_repl_url, aborted_resolution = self._resolve_replacement_interactively(
+                repl_url, aborted_resolution = self._resolve_replacement_interactively(
                     original,
                     ancestor_commit
                 )
                 if aborted_resolution:
                     return "skip", None
-                # spec_repl_url is now the fully resolved URL or None
-            elif not original.url_path: # E.g., tree link, direct replacement with ancestor
-                spec_repl_url = self._construct_repl_permalink(original, ancestor_commit, None, None, None)
-            # If original.url_path was None (e.g., tree link), we don't do this path resolution.
+                # repl_url is now the fully resolved URL or None
+            else: # E.g., tree link, direct replacement with ancestor
+                repl_url = self._construct_repl_permalink(original, ancestor_commit, None, None, None)
 
-        elif not ancestor_commit: # No ancestor, resolution relies on user providing a full URL
+        else: # No ancestor, resolution relies on user providing a full URL
             self._vprint("No ancestor commit. User must provide a full URL or skip/tag.")
-            spec_repl_url, aborted_resolution = self._resolve_replacement_interactively(
+            repl_url, aborted_resolution = self._resolve_replacement_interactively(
                 original,
                 None # No ancestor context
             )
             if aborted_resolution:
                 return "skip", None
 
-        # At this point, spec_repl_url contains the candidate URL if resolution was successful
-        # or if it was a direct tree link replacement. Otherwise, it's None.
-        repl_url = spec_repl_url # Use this as the proposed replacement URL
-
         if repl_url:
             print(f"✨ Suggested replacement URL: {repl_url}")
-        elif not ancestor_commit and not spec_repl_url: # No ancestor, and user didn't provide a URL
+        else: # No ancestor, and user didn't provide a URL
             print(
-                "  ℹ️ No common ancestor found and no alternative URL provided through resolution."
+                "  ℹ️ No common ancestor found and no alternative URL provided by user."
             )
 
-        # --- Stage 3: Final Action Prompt ---
-        action, remember_this_choice = self._prompt_user_for_final_action(
+        # --- Stage 2: Action Prompt ---
+        action, remember_this_choice = self._prompt_user_for_action(
             original,
-            repl_url, # Pass the resolved or formed URL
+            repl_url,
             is_commit_slated_for_tagging,
             auto_action_directive_for_commit=auto_action_directive_for_commit,
         )
@@ -900,37 +888,40 @@ class PermalinkFixerApp:
             else:
                 self.session_prefs.remembered_action_without_repl = remember_this_choice
 
-        if action in ["replace", "replace_commit_group"] and repl_url:
-            return action, repl_url
-        # "tag", "untag", "skip", "skip_commit_group", or replace without URL (should not happen)
-        if action in ["replace", "replace_commit_group"] and not repl_url:
-            self._vprint(f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Defaulting to skip.")
-            return "skip", None
+        if action in ["replace", "replace_commit_group"]:
+            if repl_url:
+                return action, repl_url
+            self._vprint(f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Falling back to skip.")
+            action = "skip"
         return action, None
 
-    def _process_commit_further(
+    def _process_commit_with_details(
         self,
         commit_hash: str,
+        commit_permalinks: List[PermalinkInfo],
         commit_info: Dict[str, str],
         ancestor_commit: Optional[str],
-        commit_permalinks: List[PermalinkInfo],
     ) -> Tuple[Optional[Tuple[str, Dict[str, str]]], List[Tuple[PermalinkInfo, str]]]:
         """
         Handles interactive prompting for each permalink within a commit group.
         Returns an optional tag to create and a list of replacements to make.
         """
-        replacements_for_this_commit_group: List[Tuple[PermalinkInfo, str]] = []
-        pending_tag_for_commit: Optional[Tuple[str, Dict[str, str]]] = None
-        auto_action_directive_for_remaining_in_commit: Optional[str] = None # "replace" or "skip"
+        pending_repls: List[Tuple[PermalinkInfo, str]] = []
+        pending_tag: Optional[Tuple[str, Dict[str, str]]] = None
+        auto_action_directive_for_rest_in_commit: Optional[str] = None # "replace" or "skip"
+
+        ### First, determine if commit is slated for tagging based on remembered choices
 
         commit_is_currently_slated_for_tagging = False
         if (ancestor_commit and self.session_prefs.remembered_action_with_repl == "tag") or \
                 (not ancestor_commit and self.session_prefs.remembered_action_without_repl == "tag"):
             commit_is_currently_slated_for_tagging = True
-            pending_tag_for_commit = (commit_hash, commit_info)
+            pending_tag = (commit_hash, commit_info)
             self._vprint(
                 f"  ℹ️ Commit {commit_hash[:8]} is initially slated for tagging due to remembered choice."
             )
+
+        ### Then iterate through all the files referencing this commit
 
         self._vprint(
             f"\n  🚧 Interactively processing {len(commit_permalinks)} permalink(s) for commit {commit_hash[:8]}:"
@@ -940,9 +931,10 @@ class PermalinkFixerApp:
             permalinks_by_file.setdefault(p.found_in_file, []).append(p)
         sorted_file_paths = sorted(permalinks_by_file.keys())
 
-        commit_wide_repl_idx = 0
         stop_processing_permalinks_for_this_commit_entirely = False
 
+        # Loop through each file in sorted order
+        commit_wide_repl_idx = 0
         for file_group_idx, file_path in enumerate(sorted_file_paths):
             permalinks_in_this_file = permalinks_by_file[file_path]
             permalinks_in_this_file.sort(key=lambda p_info: p_info.found_at_line)
@@ -952,74 +944,59 @@ class PermalinkFixerApp:
                 f"({len(permalinks_in_this_file)} permalink(s) for this commit)"
             )
 
-            permalink_idx = 0
-            while permalink_idx < len(permalinks_in_this_file):
-                permalink = permalinks_in_this_file[permalink_idx]
-                current_action: str
-                final_repl_url_if_action_is_replace: Optional[str] = None
+            permalink_for_this_file_idx = 0
+            while permalink_for_this_file_idx < len(permalinks_in_this_file):
+                permalink = permalinks_in_this_file[permalink_for_this_file_idx]
 
-                action_from_prompt, repl_url_from_prompt = (
-                    self._prompt_user_for_action_on_permalink(
+                action, repl_url = (
+                    self._process_permalink(
                         permalink,
                         ancestor_commit,
-                        file_path=file_path,
                         index=commit_wide_repl_idx,
                         total=len(commit_permalinks),
                         is_commit_slated_for_tagging=commit_is_currently_slated_for_tagging,
-                        auto_action_directive_for_commit=auto_action_directive_for_remaining_in_commit
+                        auto_action_directive_for_commit=auto_action_directive_for_rest_in_commit
                     )
                 )
-                current_action = action_from_prompt
-                final_repl_url_if_action_is_replace = repl_url_from_prompt
 
-                if current_action == "untag":
+                if action == "untag":
                     if commit_is_currently_slated_for_tagging:
                         commit_is_currently_slated_for_tagging = False
-                        pending_tag_for_commit = None
+                        pending_tag = None
                         print(
                             f"  ℹ️ Commit {commit_hash[:8]} is no longer slated for tagging. Re-evaluating current permalink."
                         )
                     # Do not increment permalink_idx or commit_wide_repl_idx; re-process current permalink
                     continue  # Restart the while loop for the current permalink_idx
 
-                # If an auto-action for the rest of the commit wasn't already set,
-                # check if the current action implies one.
-                if not auto_action_directive_for_remaining_in_commit:
-                    if current_action == "replace_commit_group":
-                        auto_action_directive_for_remaining_in_commit = "replace"
-                        current_action = "replace"  # The current permalink is processed as a "replace"
+                # Check if the current action implies a real action plus a remembered choice
+                if action == "replace_commit_group":
+                    auto_action_directive_for_rest_in_commit = (action := "replace")
+                    self._vprint(
+                        f"    🤖 User chose 'replace commit'. Will auto-accept replace for rest of commit {commit_hash[:8]}."
+                    )
+                    if not repl_url: # Should not happen
                         self._vprint(
-                            f"    🤖 User chose 'replace commit'. Will auto-accept replace for rest of commit {commit_hash[:8]}."
+                            f"  🐛 Action was 'replace_commit_group' but no replacement URL was provided for '{permalink.url[-50:]}'. Skipping…"
                         )
-                        # final_repl_url_if_action_is_replace is already set from prompt
-                        if not final_repl_url_if_action_is_replace: # Should not happen
-                            self._vprint(
-                                f"  ⚠️ Action was 'replace_commit_group' but no replacement URL was provided for '{permalink.url[-50:]}'. Skipping this one."
-                            )
-                            current_action = "skip" # Fallback to skip if URL is missing
+                        action = "skip" # Fallback to skip if URL is missing
 
-                    elif current_action == "skip_commit_group":
-                        auto_action_directive_for_remaining_in_commit = "skip"
-                        current_action = "skip" # The current permalink is processed as a "skip"
-                        self._vprint(
-                            f"    🤖 User chose 'skip commit'. Will auto-fallback to skip for rest of commit {commit_hash[:8]}."
-                        )
-                        final_repl_url_if_action_is_replace = None # Ensure no replacement
+                elif action == "skip_commit_group":
+                    auto_action_directive_for_rest_in_commit = (action := "skip")
+                    self._vprint(
+                        f"    🤖 User chose 'skip commit'. Will auto-fallback to skip for rest of commit {commit_hash[:8]}."
+                    )
 
-                # If action is not "untag", we proceed with this permalink's decision
-                elif current_action == "tag":
-                    if (
-                        not commit_is_currently_slated_for_tagging
-                    ):  # User chose 't' or 'ta' when not slated
+                # Now that we know what the real action is
+                if action == "tag":
+                    if not commit_is_currently_slated_for_tagging:  # User chose 't' or 'ta' when not slated
                         commit_is_currently_slated_for_tagging = True
-                        pending_tag_for_commit = (commit_hash, commit_info)  # Mark for tagging
+                        pending_tag = (commit_hash, commit_info)  # Mark for tagging
                         self._vprint(
                             f"  ℹ️ Commit {commit_hash[:8]} is now slated to be tagged based on choice for '{permalink.url[-50:]}'…"
                         )
 
-                        if (
-                            replacements_for_this_commit_group
-                        ):  # If prior replacements exist for this commit
+                        if pending_repls:  # If prior replacements exist for this commit
                             print(
                                 "\n⚠️ Commit is now slated for tagging, but you previously chose to REPLACE some permalink(s) for this commit."
                             )
@@ -1033,26 +1010,18 @@ class PermalinkFixerApp:
                                 "   3) Tag commit & KEEP previous REPLACEMENTS. Continue to be prompted for other permalinks for this commit."
                             )
                             while True:
-                                sub_choice = input(
-                                    "      Select how to handle existing replacements (1/2/3): "
-                                ).strip()
+                                sub_choice = input("      Select how to handle existing replacements (1,2,3): ").strip()
                                 if sub_choice == "1":
-                                    replacements_for_this_commit_group.clear()
-                                    print(
-                                        "  🗑️ Previous replacement choices for this commit have been discarded."
-                                    )
+                                    pending_repls.clear()
+                                    print("  🗑️ Previous replacement choices for this commit have been discarded.")
                                     stop_processing_permalinks_for_this_commit_entirely = True
                                     break
                                 if sub_choice == "2":
-                                    print(
-                                        "  ✅ Previous replacements kept. No more prompts for this commit."
-                                    )
+                                    print("  🛑 Previous replacements kept. No more prompts for this commit.")
                                     stop_processing_permalinks_for_this_commit_entirely = True
                                     break
                                 if sub_choice == "3":
-                                    print(
-                                        "  ✅ Previous replacements kept. Will continue prompting for this commit."
-                                    )
+                                    print("  🟢 Previous replacements kept. Will continue prompting for this commit.")
                                     # commit_is_currently_slated_for_tagging remains True
                                     break
                                 print("      Invalid choice. Please select 1, 2, or 3.")
@@ -1070,20 +1039,18 @@ class PermalinkFixerApp:
                     # If commit was already slated and user chose 't' (which shouldn't be an option
                     # if the UI is correct, as it would be '-t'), this path is defensive.
 
-                elif current_action == "replace":
-                    if final_repl_url_if_action_is_replace:
-                        replacements_for_this_commit_group.append(
-                            (permalink, final_repl_url_if_action_is_replace)
-                        )
+                elif action == "replace":
+                    if repl_url:
+                        pending_repls.append((permalink, repl_url))
                     else:  # Should not happen if action is "replace"
                         self._vprint(
-                            f"  ⚠️ Action was 'replace' but no replacement URL was provided for permalink '{permalink.url[-50:]}'. Skipping."
+                            f"  🐛 Action was 'replace' but no replacement URL was provided for permalink '{permalink.url[-50:]}'. Skipping…"
                         )
 
-                elif current_action == "skip":
-                    print(f"  ⏭️ Skipping permalink '{permalink.url[-50:]}'…")
+                elif action == "skip":
+                    print(f"  ⏩ Skipping permalink '{permalink.url[-50:]}'…")
 
-                permalink_idx += 1
+                permalink_for_this_file_idx += 1
                 commit_wide_repl_idx += 1
 
                 if stop_processing_permalinks_for_this_commit_entirely:
@@ -1091,7 +1058,7 @@ class PermalinkFixerApp:
             if stop_processing_permalinks_for_this_commit_entirely:
                 break  # Break from outer for loop (files for this commit)
 
-        return pending_tag_for_commit, replacements_for_this_commit_group
+        return pending_tag, pending_repls
 
     def _prompt_user_about_fetching_this_commit(self, commit_hash: str) -> bool:
         """
@@ -1121,25 +1088,14 @@ class PermalinkFixerApp:
                 return False
             print("   Invalid choice. Please try again.")
 
-    def _process_commit(
-        self, commit_hash: str, commit_permalinks: List[PermalinkInfo], index: int, total: int
-    ) -> Tuple[Optional[Tuple[str, Dict[str, str]]], List[Tuple[PermalinkInfo, str]]]:
+    def _check_commit_is_available_locally(self, commit_hash: str) -> bool:
         """
-        Processes a single commit hash and all its associated permalinks for the Examination phase.
-        Determines if auto-actions apply or if interactive prompting is needed.
+        Checks if a commit is available locally in the repository and fetches it if necessary
+        and allowed by the fetch mode preference.
 
-        Returns lists of (commit_hash, commit_info) tuples for tagging (or None) and
-        (permalink_info, repl_url) tuples for replacements for this commit.
+        Return whether commit is available locally after checks and potential fetch.
         """
-        pending_repls: List[Tuple[PermalinkInfo, str]] = []
-        pending_tag: Optional[Tuple[str, Dict[str, str]]] = None
-
-        print(f"\n{'-' * 80}")
-        index_msg = f"Commit #{index + 1}/{total}: {commit_hash[:8]} ({len(commit_permalinks)} permalink(s))"
-        print(f"\n[*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
-
-        commit_available = is_commit_available_locally(commit_hash)
-        if not commit_available:
+        if not (commit_available := is_commit_available_locally(commit_hash)):
             print(f"  ❗ Commit {commit_hash} does not exist in this repository")
             should_attempt_fetch_this_commit = False
 
@@ -1152,23 +1108,39 @@ class PermalinkFixerApp:
 
             if should_attempt_fetch_this_commit:
                 if fetch_commit_missing_locally(commit_hash, self._vprint):
-                    commit_available = is_commit_available_locally(commit_hash) # Re-verify
-                    if not commit_available:
+                    if not (commit_available := is_commit_available_locally(commit_hash)):
                         print(f"  ❌ Fetch for {commit_hash} seemed to succeed, but commit still not found.")
                 else:
                     # Fetch failed, commit still not available
                     print(f"  ❌ Fetch attempt for {commit_hash} failed or commit still not found.")
             else: # Not attempting fetch
-                self._vprint(f"  Skipping fetch for commit {commit_hash} (fetch-mode is 'never' or user declined).")
+                self._vprint(f"  ⏩ Skipping fetch for commit {commit_hash} (fetch-mode is 'never' or user declined).")
 
-        if not commit_available:
+        return commit_available
+
+
+    def _process_commit(
+        self, commit_hash: str, commit_permalinks: List[PermalinkInfo], index: int, total: int
+    ) -> Tuple[Optional[Tuple[str, Dict[str, str]]], List[Tuple[PermalinkInfo, str]]]:
+        """
+        Processes a single commit hash and all its associated permalinks for the Examination phase.
+        Determines if auto-actions apply or if interactive prompting is needed.
+
+        Returns (commit_hash, commit_info) tuple for tagging (or None) and
+        (permalink_info, repl_url) tuples for replacements for this commit.
+        """
+
+        print(f"\n{'-' * 80}")
+        index_msg = f"Commit #{index + 1}/{total}: {commit_hash[:8]} ({len(commit_permalinks)} permalink(s))"
+        print(f"\n[*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
+
+        if not self._check_commit_is_available_locally(commit_hash):
             print(f"  ❌ Commit {commit_hash} is not available. Skipping processing for this commit.")
-            return None, pending_repls  # Skip if commit unavailable
+            return None, []  # Skip if commit unavailable
 
-        commit_info = get_commit_info(commit_hash)
-        if not commit_info:
+        if not (commit_info := get_commit_info(commit_hash)):
             print(f"  ❌ Could not get info for commit {commit_hash}")
-            return None, pending_repls
+            return None, []
 
         self._vprint(f"  📝 {commit_info['subject']}")
         self._vprint(f"    👤 Author: {commit_info['author']} ({commit_info['date']})")
@@ -1177,12 +1149,10 @@ class PermalinkFixerApp:
         # Check if the commit is already in the main branch
         if is_commit_in_main(commit_hash, self.global_prefs.main_branch):
             print(f"  ✅ Already merged into {self.global_prefs.main_branch}. Permalinks to this commit are safe.")
-            return None, pending_repls
+            return None, []
 
         print(f"  ⛓️‍💥️ Not in {self.global_prefs.main_branch}")
-        ancestor_commit = find_closest_ancestor_in_main(commit_hash, self.global_prefs.main_branch)
-
-        if ancestor_commit:
+        if ancestor_commit := find_closest_ancestor_in_main(commit_hash, self.global_prefs.main_branch):
             ancestor_info = get_commit_info(ancestor_commit)
             print(f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}")
             if ancestor_info:
@@ -1190,12 +1160,7 @@ class PermalinkFixerApp:
         else:
             print(f"  ❌ No common ancestor with {self.global_prefs.main_branch} found for {commit_hash[:8]}.")
 
-        pending_tag, repls = self._process_commit_further(
-            commit_hash, commit_info, ancestor_commit, commit_permalinks
-        )
-        pending_repls.extend(repls)
-
-        return pending_tag, pending_repls
+        return self._process_commit_with_details(commit_hash, commit_permalinks, commit_info, ancestor_commit)
 
     def _execute_replacement(self, permalink: PermalinkInfo, repl_url: str) -> None:
         """Replaces the permalink in the file."""
@@ -1350,15 +1315,15 @@ class PermalinkFixerApp:
         # Actual file modifications and tagging are done later.
         commit_items = examination_set.get_commit_examination_items()
         for index, (commit_hash, commit_permalinks) in enumerate(commit_items):
-            tag_info_for_commit, repls_from_commit = self._process_commit(
+            tag_to_create, replacements = self._process_commit(
                 commit_hash, commit_permalinks, index, len(commit_items)
             )
-            if tag_info_for_commit:
+            if tag_to_create:
                 # tag_info_for_commit is (commit_hash, commit_info_dict)
                 operation_set.tags_to_create.append(
-                    TagCreationOperation(commit_hash=tag_info_for_commit[0], commit_info=tag_info_for_commit[1])
+                    TagCreationOperation(commit_hash=tag_to_create[0], commit_info=tag_to_create[1])
                 )
-            for permalink_info, repl_url in repls_from_commit:
+            for permalink_info, repl_url in replacements:
                 operation_set.replacements.append(
                     PermalinkReplacementOperation(permalink_info=permalink_info, repl_url=repl_url)
                 )

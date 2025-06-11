@@ -29,7 +29,7 @@ def _get_github_token() -> Optional[str]:
         token_input = input("\n🔑 Enter GitHub Personal Access Token (PAT) for API access (or press Enter to skip): ").strip()
         if token_input:
             return token_input
-        print("ℹ️ No GitHub token provided by user. Skipping API fallback.", file=sys.stderr)
+        print("No GitHub token provided by user. Skipping API fallback.", file=sys.stderr)
         return None
     except EOFError:
         print("⚠️ Cannot prompt for GitHub token: EOF while reading input. Skipping API fallback.", file=sys.stderr)

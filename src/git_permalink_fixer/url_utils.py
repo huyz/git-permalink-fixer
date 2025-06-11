@@ -42,7 +42,11 @@ def parse_github_permalink_for_this_repo(
     owner, repo, _, commit_hash, url_path, line_start, line_end = match.groups()
 
     # Validate that the commit_hash is a hexadecimal hash and not a branch or tag
-    if not commit_hash or not all(c in '0123456789abcdefABCDEF' for c in commit_hash) or not (7 <= len(commit_hash) <= 40):
+    if (
+        not commit_hash
+        or not all(c in "0123456789abcdefABCDEF" for c in commit_hash)
+        or not 7 <= len(commit_hash) <= 40
+    ):
         return None
 
     # Only process URLs from the current repository

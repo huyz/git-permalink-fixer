@@ -99,12 +99,11 @@ def fetch_raw_github_content_from_url(github_file_url: str) -> Optional[List[str
             token = _get_github_token()
             if token:
                 return _fetch_github_content_with_api(owner, repo, ref, path, token)
-            else:
-                print(f"❌ Failed to fetch from {raw_url} (status {e_http.response.status_code}) and no token for API fallback.", file=sys.stderr)
-                return None
-        else:  # Server error (5xx) or other HTTPError not in 4xx range
-            print(f"❌ HTTP error {e_http.response.status_code} fetching raw content from {raw_url}: {e_http.response.reason}", file=sys.stderr)
+            print(f"❌ Failed to fetch from {raw_url} (status {e_http.response.status_code}) and no token for API fallback.", file=sys.stderr)
             return None
+        # Server error (5xx) or other HTTPError not in 4xx range
+        print(f"❌ HTTP error {e_http.response.status_code} fetching raw content from {raw_url}: {e_http.response.reason}", file=sys.stderr)
+        return None
     except requests.exceptions.RequestException as e:  # Catch other initial request errors
         print(f"❌ Network error fetching raw content from {raw_url}: {e}", file=sys.stderr)
         return None

@@ -1,0 +1,40 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*' # Trigger on version tags like v0.1.0, v1.0.0rc1
+  release:
+    # `released` instead of `published` means that pre-releases (that go from draft to published)
+    # do not trigger a deploy to PROD. Only a stable release will trigger a deploy to PROD.
+    types: [released]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for trusted publishing
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install build dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+
+    - name: Build package
+      run: python -m build
+
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      # with:
+      #   password: ${{ secrets.PYPI_API_TOKEN }} # Use this if not using trusted publishing
+      #   repository-url: https://test.pypi.org/legacy/ # Uncomment to publish to TestPyPI

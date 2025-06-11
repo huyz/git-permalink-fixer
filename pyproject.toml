@@ -1,23 +1,63 @@
 [project]
 name = "git-permalink-fixer"
 version = "0.1.0"
-description = "Add your description here"
+description = "A tool to find, replace, and protect GitHub permalinks in your project."
+readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "huyz", email = "huyz@users.noreply.github.com" }
 ]
-dependencies = [
-    "pytest>=8.4.0",
-    "requests>=2.32.3",
+keywords = ["git", "github", "permalink", "git-tag"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
 ]
-readme = "README.md"
 requires-python = ">= 3.9"
+dependencies = [
+    "requests>=2.32.3",  # For checking referenced lines in permalinks
+]
 
 [project.scripts]
 "git-permalink-fixer" = "git_permalink_fixer:main"
 
+[project.urls]
+"Homepage" = "https://github.com/huyz/git-permalink-fixer"
+"Bug Tracker" = "https://github.com/huyz/git-permalink-fixer/issues"
+"Repository" = "https://github.com/huyz/git-permalink-fixer"
+
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/.github",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/git_permalink_fixer"]
 
 [tool.rye]
 managed = true
@@ -25,16 +65,11 @@ dev-dependencies = [
     "pytest>=8.4.0",
     "pytest-mock>=3.14.1",
     "types-requests>=2.32.0.20250602",
+    # pytest needs setuptools and rye doesn't install it by default
     "setuptools>=80.9.0",
     "pytest-cov>=6.1.1",
 ]
 line-length = 120  # Default is 88
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/git_permalink_fixer"]
 
 [tool.black]
 line-length = 120  # Default is 88
@@ -59,8 +94,8 @@ exclude_gitignore = true
 
 [tool.pylint.config]
 disable = ["missing-module-docstring", "missing-class-docstring", "missing-function-docstring", "line-too-long",
-    "too-many-locals", "too-many-arguments", "too-many-branches", "too-many-statements", "too-many-return-statements",
-    "too-many-instance-attributes", "f-string-without-interpolation"]
+"too-many-locals", "too-many-arguments", "too-many-positional-arguments", "too-many-branches", "too-many-statements",
+"too-many-return-statements", "too-many-instance-attributes", "f-string-without-interpolation"]
 
 [tool.pylint.MASTER]
 # Ignore dotfiles and directories, venv, and tests
@@ -74,4 +109,3 @@ max-line-length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_paths = ["src"]  # Adds src to Python path

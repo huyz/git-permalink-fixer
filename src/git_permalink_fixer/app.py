@@ -268,7 +268,7 @@ class PermalinkFixerApp:
         if target_url:
             target_gh_info = parse_github_blob_permalink(target_url)
             if target_gh_info:  # It's a GitHub URL
-                _, _, _, _, repl_ls, repl_le = target_gh_info
+                _, _, _, _, repl_ls, _ = target_gh_info
                 if repl_ls is None:
                     return True, None, None  # No lines specified in URL fragment. User should know what they're doing
                 repl_lines = fetch_raw_github_content_from_url(target_url)
@@ -538,12 +538,6 @@ class PermalinkFixerApp:
         """
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
         """
-        # Unpack state
-        current_is_external = state["current_is_external"]
-        current_external_url_base = state["current_external_url_base"]
-        current_url_path_for_ancestor = state["current_url_path_for_ancestor"]
-        current_ls = state["current_ls"]
-        current_le = state["current_le"]
 
         if menu_choice == "o":
             urls_to_open_list = [("Original URL", original.url)]

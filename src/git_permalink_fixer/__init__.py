@@ -1,46 +1,4 @@
 #!/usr/bin/env python3
-"""
-GitHub Permalink Fixer
-======================
-
-Makes sure permalinks stay permanent.
-The goal is to avoid git's garbage collection from nuking commits that it thinks
-are no longer referenced.
-
-Finds GitHub commit permalinks in a repository, checks if commits are merged
-into `main` and, for unmerged commits, tries to find the closest ancestor in
-`main` (and checks that any line references still make sense).
-For unmerged commits, it prompts the user to replace its permalinks to new ones
-pointing to the ancestor; it also provides a fallback of tagging the commit
-to protect it.
-
-
-Usage
------
-
-python3 git_permalink_fixer.py [OPTIONS]
-
-Help: to see all flags, run with `-h`
-
-
-Supported
----------
-
-Supports the following cloud git repos:
-
-- GitHub with links of the form:
-    - `https://github.com/org/project/blob/commit_hash/url_path#Lline_start-Lline_end`
-    - `https://github.com/org/project/tree/commit_hash`
-
-Requires
---------
-Python v3.9+
-
-History
--------
-
-- 2025-06-01 Authored by AI with huyz's strict guidance, supervision, and editing.
-"""
 
 import argparse
 import sys

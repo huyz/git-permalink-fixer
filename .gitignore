@@ -298,3 +298,4 @@ cython_debug/
 
 .idea/
 .vscode/
+.envrc

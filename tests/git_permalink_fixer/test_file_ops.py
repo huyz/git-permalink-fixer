@@ -194,7 +194,7 @@ def test_extract_permalinks_from_file(
 
     # The logger is used in the function, ensure it doesn't break tests
     # (We are not asserting logger calls)
-    with patch("git_permalink_fixer.file_ops.logger") as mock_logger:
+    with patch("git_permalink_fixer.file_ops.logger"):
         actual_permalinks, actual_found_count = \
             extract_permalinks_from_file(
                 file_path, lines, test_repo_root, git_owner, git_repo,

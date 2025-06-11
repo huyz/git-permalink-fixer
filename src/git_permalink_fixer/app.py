@@ -465,7 +465,6 @@ class PermalinkFixerApp:
 
     def _resolution_menu_handle_set_url(
         self,
-        original: PermalinkInfo,
         ancestor_commit: Optional[str],
         state: ResolutionState
     ) -> Tuple[str, ResolutionState]:
@@ -484,6 +483,7 @@ class PermalinkFixerApp:
            gh_info[2] == ancestor_commit:
             self._vprint(f"    Parsed as URL for current ancestor commit ({ancestor_commit[:8]}).")
             state["current_is_external"] = False
+            state["current_external_url_base"] = None  # Clear to reduce confusion
             state["current_url_path_for_ancestor"] = gh_info[3]
             state["current_ls"], state["current_le"] = new_url_ls, new_url_le
             self._vprint(f"    Set path to '{state['current_url_path_for_ancestor']}' and lines from URL fragment.")
@@ -566,7 +566,7 @@ class PermalinkFixerApp:
         elif menu_choice == "l":
             return self._resolution_menu_handle_set_line_numbers(state)
         elif menu_choice == "u":
-            return self._resolution_menu_handle_set_url(original, ancestor_commit, state)
+            return self._resolution_menu_handle_set_url(ancestor_commit, state)
         elif menu_choice == "t" and ancestor_commit and state["current_url_path_for_ancestor"] and original.line_start is not None:
             try:
                 new_tolerance_input = input(f"    Enter new line shift tolerance (e.g., 5 or 10%, 0 or 0% to disable): ").strip()

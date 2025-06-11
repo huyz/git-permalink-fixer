@@ -26,6 +26,7 @@ dev-dependencies = [
     "pytest-mock>=3.14.1",
     "types-requests>=2.32.0.20250602",
     "setuptools>=80.9.0",
+    "pytest-cov>=6.1.1",
 ]
 line-length = 120  # Default is 88
 
@@ -70,3 +71,7 @@ max-line-length = 120
 
 [tool.flake8]
 max-line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_paths = ["src"]  # Adds src to Python path

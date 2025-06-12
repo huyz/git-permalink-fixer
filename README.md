@@ -108,6 +108,9 @@ git-permalink-fixer [path]
 - **`-v`, `--verbose`**
     Enable verbose output for more detailed logging.
 
+- **`--version`**
+    Show program's version number and exit.
+
 - **`-n`, `--dry-run`**
     Show what would be done without making any changes (tags, file modifications, or remote pushes).
     *Note: will still attempt to fetch commits if they are not found locally.*

@@ -1,5 +1,6 @@
 import argparse
 import sys
+import importlib.metadata
 from pathlib import Path
 
 from .global_prefs import GlobalPreferences
@@ -13,6 +14,18 @@ def main():
         description="Finds GitHub commit permalinks, checks their status relative to the main branch, and assists"
         " in preserving or updating them.",
         formatter_class=argparse.RawTextHelpFormatter,  # Allows for better formatting of help
+    )
+
+    try:
+        package_version = importlib.metadata.version("git-permalink-fixer")
+    except importlib.metadata.PackageNotFoundError:
+        package_version = "unknown"
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {package_version}",
+        help="Show program's version number and exit.",
     )
     parser.add_argument(
         "scan_path",

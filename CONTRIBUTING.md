@@ -29,7 +29,8 @@ First off, thank you for considering contributing to Git Permalink Fixer! Your h
 
 ### Python Styleguide
 *   Follow PEP 8, except that we allow 120 characters per line.
-*   We use `black` for code formatting and `rye` (or `pylint`) for linting. Consider using pre-commit hooks.
+*   We use `ruff` for code formatting and linting, `pylint` for more linting, and `mypy` for type checking.
+*   We use `pre-commit` to enforce some of these standards. Please install it (`pipx install pre-commit` or `brew install pre-commit`) and set up the hooks (`pre-commit install`) in your local clone.
 
 ## Any questions?
 

@@ -43,20 +43,29 @@ def setup_test_constants(monkeypatch):
     [
         # 1. Directory checks
         ("some_dir", True, None, True, "Should skip a directory"),
-
         # 2. Special path component checks
         (".git/config", False, None, True, "Should skip if '.git' in path parts"),
         ("src/.git/hooks", False, None, True, "Should skip if '.git' in path parts (deeper)"),
         (".idea/workspace.xml", False, None, True, "Should skip if '.idea' in path parts"),
         ("src/.vscode/settings.json", False, None, True, "Should skip if '.vscode' in path parts"),
-
         # 3. Gitignore checks
         ("ignored_file.txt", False, {"ignored_file.txt"}, True, "Should skip if file is in ignored_paths_from_git"),
-        ("not_ignored.txt", False, {"other_ignored.txt"}, False, "Should not skip if file is not in ignored_paths_from_git"),
+        (
+            "not_ignored.txt",
+            False,
+            {"other_ignored.txt"},
+            False,
+            "Should not skip if file is not in ignored_paths_from_git",
+        ),
         ("dir_ignored/file.py", False, {"dir_ignored"}, True, "Should skip if parent dir is in ignored_paths_from_git"),
-        ("deep/path/to/ignored.py", False, {"deep/path/to"}, True, "Should skip if an ancestor dir is in ignored_paths_from_git"),
+        (
+            "deep/path/to/ignored.py",
+            False,
+            {"deep/path/to"},
+            True,
+            "Should skip if an ancestor dir is in ignored_paths_from_git",
+        ),
         ("file.txt", False, set(), False, "Should not skip if ignored_paths_from_git is empty"),
-
         # 4. Extension/Name checks
         ("unknown_extensionless", False, None, True, "Should skip unknown extensionless file"),
         ("README", False, None, False, "Should not skip common extensionless file 'README'"),
@@ -69,7 +78,7 @@ def setup_test_constants(monkeypatch):
         ("UPPERCASE.MD", False, None, False, "Should handle uppercase extension correctly (.md)"),
         ("file.UPPERCASETEXT", False, None, False, "Should handle uppercase extension correctly (.uppercasetext)"),
         ("LICENSE", False, None, False, "Should not skip 'LICENSE' at root"),
-    ]
+    ],
 )
 def test_should_skip_file_search(
     test_repo_root: Path,
@@ -94,7 +103,7 @@ def test_should_skip_file_search(
         # Ensure ignored directories exist if they are parents for the check
         for p_str in ignored_rel_paths_str:
             abs_p = test_repo_root / p_str
-            if not abs_p.suffix: # Assume it's a directory if no suffix for this test setup
+            if not abs_p.suffix:  # Assume it's a directory if no suffix for this test setup
                 abs_p.mkdir(parents=True, exist_ok=True)
 
     result = should_skip_file_search(file_path, test_repo_root, ignored_paths_absolute)
@@ -111,76 +120,193 @@ def dummy_normalize_repo_name_func(repo_name: str) -> str:
     "expected_permalinks_data, expected_found_count_after, description",
     [
         # 1. No permalinks
-        (["Just some text", "Another line"], "owner", "repo", None, 0, [],
-         [], 0, "No permalinks found"),
-
+        (["Just some text", "Another line"], "owner", "repo", None, 0, [], [], 0, "No permalinks found"),
         # 2. One valid permalink
-        (["Link: https://github.com/owner/repo/blob/hash1/file1.py"], "owner", "repo", None, 1,
-         [PermalinkInfo("https://github.com/owner/repo/blob/hash1/file1.py", "hash1", "file1.py", None, None, Path("dummy"), 0)],
-         [("https://github.com/owner/repo/blob/hash1/file1.py", "hash1", "file1.py", 1)],
-         2, "One valid permalink"),
-
+        (
+            ["Link: https://github.com/owner/repo/blob/hash1/file1.py"],
+            "owner",
+            "repo",
+            None,
+            1,
+            [
+                PermalinkInfo(
+                    "https://github.com/owner/repo/blob/hash1/file1.py",
+                    "hash1",
+                    "file1.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                )
+            ],
+            [("https://github.com/owner/repo/blob/hash1/file1.py", "hash1", "file1.py", 1)],
+            2,
+            "One valid permalink",
+        ),
         # 3. Permalink not matching owner/repo (parse_github_permalink_for_this_repo should return None)
-        (["Link: https://github.com/other_owner/other_repo/blob/hash2/file2.py"], "owner", "repo", None, 0,
-         [None],
-         [], 0, "Permalink for different owner/repo"),
-
+        (
+            ["Link: https://github.com/other_owner/other_repo/blob/hash2/file2.py"],
+            "owner",
+            "repo",
+            None,
+            0,
+            [None],
+            [],
+            0,
+            "Permalink for different owner/repo",
+        ),
         # 4. Multiple URLs in one line, one valid, one not a permalink type
-        (["URL1: https://github.com/owner/repo/issues/1 URL2: https://github.com/owner/repo/blob/hash3/file3.py"], "owner", "repo", None, 10,
-         [PermalinkInfo("https://github.com/owner/repo/blob/hash3/file3.py", "hash3", "file3.py", None, None, Path("dummy"), 0), None],
-         [("https://github.com/owner/repo/blob/hash3/file3.py", "hash3", "file3.py", 1)],
-         11, "Multiple URLs, one valid permalink, one not permalink type"),
-
+        (
+            ["URL1: https://github.com/owner/repo/issues/1 URL2: https://github.com/owner/repo/blob/hash3/file3.py"],
+            "owner",
+            "repo",
+            None,
+            10,
+            [
+                PermalinkInfo(
+                    "https://github.com/owner/repo/blob/hash3/file3.py",
+                    "hash3",
+                    "file3.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                ),
+                None,
+            ],
+            [("https://github.com/owner/repo/blob/hash3/file3.py", "hash3", "file3.py", 1)],
+            11,
+            "Multiple URLs, one valid permalink, one not permalink type",
+        ),
         # 5. Using normalize_repo_name_func
-        (["Link: https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py"], "owner", "repo", dummy_normalize_repo_name_func, 0,
-         [PermalinkInfo("https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py", "hash4", "file4.py", None, None, Path("dummy"), 0)],
-         [("https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py", "hash4", "file4.py", 1)],
-         1, "Permalink with normalize_repo_name_func"),
-
+        (
+            ["Link: https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py"],
+            "owner",
+            "repo",
+            dummy_normalize_repo_name_func,
+            0,
+            [
+                PermalinkInfo(
+                    "https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py",
+                    "hash4",
+                    "file4.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                )
+            ],
+            [("https://github.com/OWNER/REPO_ALIAS/blob/hash4/file4.py", "hash4", "file4.py", 1)],
+            1,
+            "Permalink with normalize_repo_name_func",
+        ),
         # 6. Multiple valid permalinks on different lines
-        (["Line1: https://github.com/owner/repo/blob/hash5/file5.py", "Line2: https://github.com/owner/repo/blob/hash6/file6.py"], "owner", "repo", None, 0,
-         [PermalinkInfo("https://github.com/owner/repo/blob/hash5/file5.py", "hash5", "file5.py", None, None, Path("dummy"),0),
-          PermalinkInfo("https://github.com/owner/repo/blob/hash6/file6.py", "hash6", "file6.py", None, None, Path("dummy"),0)],
-         [("https://github.com/owner/repo/blob/hash5/file5.py", "hash5", "file5.py", 1),
-          ("https://github.com/owner/repo/blob/hash6/file6.py", "hash6", "file6.py", 2)],
-         2, "Multiple permalinks on different lines"),
-
+        (
+            [
+                "Line1: https://github.com/owner/repo/blob/hash5/file5.py",
+                "Line2: https://github.com/owner/repo/blob/hash6/file6.py",
+            ],
+            "owner",
+            "repo",
+            None,
+            0,
+            [
+                PermalinkInfo(
+                    "https://github.com/owner/repo/blob/hash5/file5.py",
+                    "hash5",
+                    "file5.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                ),
+                PermalinkInfo(
+                    "https://github.com/owner/repo/blob/hash6/file6.py",
+                    "hash6",
+                    "file6.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                ),
+            ],
+            [
+                ("https://github.com/owner/repo/blob/hash5/file5.py", "hash5", "file5.py", 1),
+                ("https://github.com/owner/repo/blob/hash6/file6.py", "hash6", "file6.py", 2),
+            ],
+            2,
+            "Multiple permalinks on different lines",
+        ),
         # 7. URL that is not a GitHub URL (re.findall won't match)
-        (["Not a GitHub URL: http://example.com"], "owner", "repo", None, 0,
-         [], # mock_parse_permalink won't be called
-         [], 0, "URL is not a GitHub URL"),
-
+        (
+            ["Not a GitHub URL: http://example.com"],
+            "owner",
+            "repo",
+            None,
+            0,
+            [],  # mock_parse_permalink won't be called
+            [],
+            0,
+            "URL is not a GitHub URL",
+        ),
         # 8. Empty lines
         ([], "owner", "repo", None, 0, [], [], 0, "Empty file content"),
-
         # 9. URL with special characters that should be handled by re.findall
-        (["Link: https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag"], "o-w_n.er", "r_e-p.o", None, 0,
-         [PermalinkInfo("https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag", "h", "f.py", None, None, Path("dummy"), 0)],
-         [("https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag", "h", "f.py", 1)],
-         1, "URL with special chars, query, and fragment"),
-
+        (
+            ["Link: https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag"],
+            "o-w_n.er",
+            "r_e-p.o",
+            None,
+            0,
+            [
+                PermalinkInfo(
+                    "https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag",
+                    "h",
+                    "f.py",
+                    None,
+                    None,
+                    Path("dummy"),
+                    0,
+                )
+            ],
+            [("https://github.com/o-w_n.er/r_e-p.o/blob/h/f.py?query=1#frag", "h", "f.py", 1)],
+            1,
+            "URL with special chars, query, and fragment",
+        ),
         # 10. Multiple permalinks on the same line
-        (["https://g.com/o/r/blob/h1/f1 https://github.com/owner/repo/blob/h2/f2.py"], "owner", "repo", None, 0,
-         [None, PermalinkInfo("https://github.com/owner/repo/blob/h2/f2.py", "h2", "f2.py", None, None, Path("dummy"), 0)],
-         # Note: "g.com" is filtered by re.findall pattern. Corrected pattern in test.
-         # The re.findall is `https://github\.com/[^][()<>\"'{}|\\^`\s]+`
-         # So "https://g.com/..." will not be found by re.findall.
-         # Let's adjust the test case for re.findall behavior.
-         # If the first URL was https://github.com/invalid/... it would be found by re.findall then rejected by parse_github_permalink_for_this_repo.
-         [("https://github.com/owner/repo/blob/h2/f2.py", "h2", "f2.py", 1)], # Only the second one is valid
-         1, "Multiple GitHub URLs on same line, one valid"),
-    ]
+        (
+            ["https://g.com/o/r/blob/h1/f1 https://github.com/owner/repo/blob/h2/f2.py"],
+            "owner",
+            "repo",
+            None,
+            0,
+            [
+                None,
+                PermalinkInfo(
+                    "https://github.com/owner/repo/blob/h2/f2.py", "h2", "f2.py", None, None, Path("dummy"), 0
+                ),
+            ],
+            # Note: "g.com" is filtered by re.findall pattern. Corrected pattern in test.
+            # The re.findall is `https://github\.com/[^][()<>\"'{}|\\^`\s]+`
+            # So "https://g.com/..." will not be found by re.findall.
+            # Let's adjust the test case for re.findall behavior.
+            # If the first URL was https://github.com/invalid/... it would be found by re.findall then rejected by parse_github_permalink_for_this_repo.
+            [("https://github.com/owner/repo/blob/h2/f2.py", "h2", "f2.py", 1)],  # Only the second one is valid
+            1,
+            "Multiple GitHub URLs on same line, one valid",
+        ),
+    ],
 )
 def test_extract_permalinks_from_file(
     mock_parse_github_permalink: MagicMock,
-    test_repo_root: Path, # Use the fixture
+    test_repo_root: Path,  # Use the fixture
     lines: List[str],
     git_owner: str,
     git_repo: str,
     normalize_func_to_use: Optional[Callable],
     initial_found_count: int,
     mock_parse_side_effect: List[Optional[PermalinkInfo]],
-    expected_permalinks_data: List[Tuple[str, str, str, int]], # url, hash, path, line_num
+    expected_permalinks_data: List[Tuple[str, str, str, int]],  # url, hash, path, line_num
     expected_found_count_after,
     description: str,
 ):
@@ -190,16 +316,14 @@ def test_extract_permalinks_from_file(
         # mock_parse_side_effect should be [None, PermalinkInfo(...)]
 
     mock_parse_github_permalink.side_effect = mock_parse_side_effect
-    file_path = test_repo_root / "test_file.txt" # Use test_repo_root from fixture
+    file_path = test_repo_root / "test_file.txt"  # Use test_repo_root from fixture
 
     # The logger is used in the function, ensure it doesn't break tests
     # (We are not asserting logger calls)
     with patch("git_permalink_fixer.file_ops.logger"):
-        actual_permalinks, actual_found_count = \
-            extract_permalinks_from_file(
-                file_path, lines, test_repo_root, git_owner, git_repo,
-                initial_found_count, normalize_func_to_use
-            )
+        actual_permalinks, actual_found_count = extract_permalinks_from_file(
+            file_path, lines, test_repo_root, git_owner, git_repo, initial_found_count, normalize_func_to_use
+        )
 
     assert actual_found_count == expected_found_count_after, f"{description} (found count)"
     assert len(actual_permalinks) == len(expected_permalinks_data), f"{description} (num permalinks)"
@@ -210,7 +334,7 @@ def test_extract_permalinks_from_file(
         assert actual_pl_info.commit_hash == expected_data[1]
         assert actual_pl_info.url_path == expected_data[2]
         assert actual_pl_info.found_in_file == file_path
-        assert actual_pl_info.found_at_line == expected_data[3] # Expected line number
+        assert actual_pl_info.found_at_line == expected_data[3]  # Expected line number
 
     # Verify calls to mock_parse_github_permalink
     # This regex must match the one in extract_permalinks_from_file
@@ -221,7 +345,7 @@ def test_extract_permalinks_from_file(
             expected_parse_calls.append(call(url, git_owner, git_repo, normalize_func_to_use))
 
     assert mock_parse_github_permalink.call_count == len(expected_parse_calls)
-    if expected_parse_calls: # assert_has_calls raises AssertionError if empty list is passed
+    if expected_parse_calls:  # assert_has_calls raises AssertionError if empty list is passed
         mock_parse_github_permalink.assert_has_calls(expected_parse_calls, any_order=False)
 
 
@@ -231,10 +355,9 @@ def test_extract_permalinks_from_file_no_github_urls(mock_parse_github_permalink
     lines = ["No github urls here http://example.com", "only plain text"]
     file_path = test_repo_root / "test_file.txt"
 
-    actual_permalinks, actual_found_count = \
-        extract_permalinks_from_file(
-            file_path, lines, test_repo_root, "owner", "repo", 0, None
-        )
+    actual_permalinks, actual_found_count = extract_permalinks_from_file(
+        file_path, lines, test_repo_root, "owner", "repo", 0, None
+    )
 
     assert actual_permalinks == []
     assert actual_found_count == 0

@@ -6,7 +6,7 @@ from .conftest import create_mock_permalink_info
 
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
-@patch("builtins.input") # For the menu prompt
+@patch("builtins.input")  # For the menu prompt
 def test_resolve_interactively_cache_hit(mock_input, mock_process_choice, mock_evaluate, mock_app_for_resolution):
     original = create_mock_permalink_info(url="http://cached.url")
     cached_url = "http://resolved.cached.url"
@@ -18,6 +18,7 @@ def test_resolve_interactively_cache_hit(mock_input, mock_process_choice, mock_e
     assert aborted is False
     mock_evaluate.assert_not_called()
     mock_process_choice.assert_not_called()
+
 
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 def test_resolve_interactively_resolves_first_try(mock_evaluate, mock_app_for_resolution):
@@ -31,12 +32,13 @@ def test_resolve_interactively_resolves_first_try(mock_evaluate, mock_app_for_re
     assert aborted is False
     mock_evaluate.assert_called_once()
 
+
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
 @patch("builtins.input")
 def test_resolve_interactively_abort_choice(mock_input, mock_process_choice, mock_evaluate, mock_app_for_resolution):
     original = create_mock_permalink_info()
-    mock_evaluate.return_value = ("path_missing_ancestor", "Path missing", None) # First evaluation fails
+    mock_evaluate.return_value = ("path_missing_ancestor", "Path missing", None)  # First evaluation fails
     # User chooses to abort
     mock_process_choice.return_value = ("abort", MagicMock(spec=ResolutionState))
 
@@ -45,20 +47,23 @@ def test_resolve_interactively_abort_choice(mock_input, mock_process_choice, moc
     assert repl_url is None
     assert aborted is True
     mock_evaluate.assert_called_once()
-    mock_input.assert_called_once() # For the menu
+    mock_input.assert_called_once()  # For the menu
     mock_process_choice.assert_called_once()
+
 
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._construct_url_from_current_state")
 @patch("builtins.input")
-def test_resolve_interactively_keep_choice_valid(mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution):
+def test_resolve_interactively_keep_choice_valid(
+    mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution
+):
     original = create_mock_permalink_info()
     kept_url_val = "http://kept.url"
     mock_evaluate.return_value = ("lines_mismatch_ancestor", "Lines mismatch", None)
     current_state_mock = MagicMock(spec=ResolutionState)
     mock_process_choice.return_value = ("resolve_with_current", current_state_mock)
-    mock_construct_url.return_value = kept_url_val # Successfully constructs URL from state
+    mock_construct_url.return_value = kept_url_val  # Successfully constructs URL from state
 
     repl_url, aborted = mock_app_for_resolution._resolve_replacement_interactively(original, "anc_hash")
 
@@ -66,11 +71,14 @@ def test_resolve_interactively_keep_choice_valid(mock_input, mock_construct_url,
     assert aborted is False
     mock_construct_url.assert_called_once_with(original, "anc_hash", current_state_mock)
 
+
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._construct_url_from_current_state")
 @patch("builtins.input")
-def test_resolve_interactively_loop_then_resolve(mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution):
+def test_resolve_interactively_loop_then_resolve(
+    mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution
+):
     original = create_mock_permalink_info()
     final_resolved_url = "http://finally.resolved"
 
@@ -81,26 +89,29 @@ def test_resolve_interactively_loop_then_resolve(mock_input, mock_construct_url,
 
     state_after_path_set = MagicMock(spec=ResolutionState)
     mock_evaluate.side_effect = [
-        ("path_missing_ancestor", "Path missing", None), # First call
-        ("resolved", "Success", final_resolved_url)     # Second call
+        ("path_missing_ancestor", "Path missing", None),  # First call
+        ("resolved", "Success", final_resolved_url),  # Second call
     ]
     mock_process_choice.return_value = ("state_updated_continue", state_after_path_set)
-    mock_input.return_value = "p" # User chooses 'p'
+    mock_input.return_value = "p"  # User chooses 'p'
 
     repl_url, aborted = mock_app_for_resolution._resolve_replacement_interactively(original, "anc_hash")
 
     assert repl_url == final_resolved_url
     assert aborted is False
     assert mock_evaluate.call_count == 2
-    assert mock_process_choice.call_count == 1 # Called after the first failed evaluation
+    assert mock_process_choice.call_count == 1  # Called after the first failed evaluation
     # Check that the second call to _evaluate_current_resolution_candidate used the state from _process_resolution_menu_choice
     assert mock_evaluate.call_args_list[1][0][2] == state_after_path_set
+
 
 @patch("git_permalink_fixer.app.PermalinkFixerApp._evaluate_current_resolution_candidate")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._construct_url_from_current_state")
 @patch("builtins.input")
-def test_resolve_interactively_no_ancestor_user_provides_url(mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution):
+def test_resolve_interactively_no_ancestor_user_provides_url(
+    mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution
+):
     original = create_mock_permalink_info()
     user_provided_url = "https://user.provided/url#L1"
 
@@ -112,26 +123,25 @@ def test_resolve_interactively_no_ancestor_user_provides_url(mock_input, mock_co
     state_after_url_set = MagicMock(spec=ResolutionState)
     # Simulate _evaluate_current_resolution_candidate
     # First call: no external URL set
-    eval_results = [
-        ("needs_external_url", "No external URL", None),
-        ("resolved", "User URL OK", user_provided_url)
-    ]
+    eval_results = [("needs_external_url", "No external URL", None), ("resolved", "User URL OK", user_provided_url)]
+
     def evaluate_side_effect(orig, anc, state_param):
         # Check if state_param reflects the user having set the URL
-        if state_param == state_after_url_set: # This is a bit simplistic, real check would be on state content
+        if state_param == state_after_url_set:  # This is a bit simplistic, real check would be on state content
             return eval_results[1]
         return eval_results[0]
+
     mock_evaluate.side_effect = evaluate_side_effect
 
     # Simulate _process_resolution_menu_choice for 'u'
     # It would internally call _resolution_menu_handle_set_url which updates the state
     mock_process_choice.return_value = ("state_updated_continue", state_after_url_set)
 
-    mock_input.return_value = "u" # User chooses 'u' to set URL
+    mock_input.return_value = "u"  # User chooses 'u' to set URL
 
     repl_url, aborted = mock_app_for_resolution._resolve_replacement_interactively(
         original,
-        None # No ancestor
+        None,  # No ancestor
     )
 
     assert repl_url == user_provided_url
@@ -143,7 +153,7 @@ def test_resolve_interactively_no_ancestor_user_provides_url(mock_input, mock_co
     initial_call_state = mock_evaluate.call_args_list[0][0][2]
     assert initial_call_state["current_is_external"] is True
     assert initial_call_state["current_external_url_base"] is None
-    assert initial_call_state["current_url_path_for_ancestor"] is None # No ancestor
+    assert initial_call_state["current_url_path_for_ancestor"] is None  # No ancestor
 
     # Check state after user input 'u' passed to _evaluate_current_resolution_candidate
     second_call_state = mock_evaluate.call_args_list[1][0][2]
@@ -154,7 +164,9 @@ def test_resolve_interactively_no_ancestor_user_provides_url(mock_input, mock_co
 @patch("git_permalink_fixer.app.PermalinkFixerApp._process_resolution_menu_choice")
 @patch("git_permalink_fixer.app.PermalinkFixerApp._construct_url_from_current_state")
 @patch("builtins.input")
-def test_resolve_interactively_keep_choice_invalid_then_abort(mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution):
+def test_resolve_interactively_keep_choice_invalid_then_abort(
+    mock_input, mock_construct_url, mock_process_choice, mock_evaluate, mock_app_for_resolution
+):
     original = create_mock_permalink_info()
 
     # 1. Evaluate: fails (e.g., "needs_external_url")
@@ -164,7 +176,7 @@ def test_resolve_interactively_keep_choice_invalid_then_abort(mock_input, mock_c
     # 5. Process choice: user inputs 'a' (abort)
 
     initial_state_mock = MagicMock(spec=ResolutionState)
-    initial_state_mock.current_is_external = True # Example initial state
+    initial_state_mock.current_is_external = True  # Example initial state
     initial_state_mock.current_external_url_base = None
 
     # Simulate _evaluate_current_resolution_candidate
@@ -173,8 +185,8 @@ def test_resolve_interactively_keep_choice_invalid_then_abort(mock_input, mock_c
     # Simulate _process_resolution_menu_choice
     # First call for 'k', second for 'a'
     mock_process_choice.side_effect = [
-        ("resolve_with_current", initial_state_mock), # User chose 'k'
-        ("abort", initial_state_mock)                 # User chose 'a'
+        ("resolve_with_current", initial_state_mock),  # User chose 'k'
+        ("abort", initial_state_mock),  # User chose 'a'
     ]
 
     # Simulate _construct_url_from_current_state
@@ -186,18 +198,18 @@ def test_resolve_interactively_keep_choice_invalid_then_abort(mock_input, mock_c
 
     repl_url, aborted = mock_app_for_resolution._resolve_replacement_interactively(
         original,
-        None # No ancestor
+        None,  # No ancestor
     )
 
     assert repl_url is None
     assert aborted is True
-    assert mock_evaluate.call_count == 2 # Called twice due to loop
+    assert mock_evaluate.call_count == 2  # Called twice due to loop
     assert mock_process_choice.call_count == 2
-    mock_construct_url.assert_called_once_with(original, None, initial_state_mock) # Called after 'k'
+    mock_construct_url.assert_called_once_with(original, None, initial_state_mock)  # Called after 'k'
 
     # Verify initial state passed to _evaluate
     first_eval_call_args = mock_evaluate.call_args_list[0][0]
-    assert first_eval_call_args[2]["current_is_external"] is True # Initial state for no ancestor
+    assert first_eval_call_args[2]["current_is_external"] is True  # Initial state for no ancestor
     assert first_eval_call_args[2]["current_external_url_base"] is None
 
     # Verify state passed to _process_resolution_menu_choice (should be the one from the loop)
@@ -209,7 +221,7 @@ def test_resolve_interactively_keep_choice_invalid_then_abort(mock_input, mock_c
 
     # Verify state for second loop
     second_eval_call_args = mock_evaluate.call_args_list[1][0]
-    assert second_eval_call_args[2] == initial_state_mock # State should persist from the 'k' choice attempt
+    assert second_eval_call_args[2] == initial_state_mock  # State should persist from the 'k' choice attempt
 
     second_process_choice_call_args = mock_process_choice.call_args_list[1][0]
     assert second_process_choice_call_args[3] == initial_state_mock

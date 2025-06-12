@@ -15,11 +15,7 @@ from .url_utils import parse_github_permalink_for_this_repo
 logger = logging.getLogger(__name__)
 
 
-def should_skip_file_search(
-    file_path: Path,
-    repo_root: Path,
-    ignored_paths: Optional[Set[Path]] = None
-) -> bool:
+def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: Optional[Set[Path]] = None) -> bool:
     """Helper to determine if a file should be skipped during permalink search.
 
     Note that calling `file` would be too slow, so we use a heuristic.
@@ -27,12 +23,7 @@ def should_skip_file_search(
 
     :param file_path: The absolute paths of files to ignore; e.g., git-ignored paths.
     """
-    if (
-        file_path.is_dir()
-        or ".git" in file_path.parts
-        or ".idea" in file_path.parts
-        or ".vscode" in file_path.parts
-    ):
+    if file_path.is_dir() or ".git" in file_path.parts or ".idea" in file_path.parts or ".vscode" in file_path.parts:
         return True
 
     if ignored_paths:
@@ -43,10 +34,10 @@ def should_skip_file_search(
         while True:
             if current_check_path in ignored_paths:
                 return True
-            if current_check_path == repo_root: # Stop if we've checked the repo root itself
+            if current_check_path == repo_root:  # Stop if we've checked the repo root itself
                 break
             parent = current_check_path.parent
-            if parent == current_check_path: # Reached filesystem root
+            if parent == current_check_path:  # Reached filesystem root
                 break
             current_check_path = parent
 
@@ -78,9 +69,7 @@ def extract_permalinks_from_file(
         urls_in_line = re.findall(GITHUB_URL_FIND_PATTERN, line_content)
         permalinks_found_on_this_line = []
         for url in urls_in_line:
-            permalink_info = parse_github_permalink_for_this_repo(
-                url, git_owner, git_repo, normalize_repo_name_func
-            )
+            permalink_info = parse_github_permalink_for_this_repo(url, git_owner, git_repo, normalize_repo_name_func)
             if permalink_info:
                 permalink_info.found_in_file = file_path
                 permalink_info.found_at_line = line_num

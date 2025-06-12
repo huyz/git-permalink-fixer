@@ -9,6 +9,7 @@ from .text_utils import parse_tolerance_input
 @dataclass
 class GlobalPreferences:
     """Preferences not expected to change."""
+
     verbose: bool = False
     dry_run: bool = False
     respect_gitignore: bool = True
@@ -23,13 +24,11 @@ class GlobalPreferences:
     tolerance_value: int = field(init=False)
 
     def __post_init__(self):
-        self.tolerance_is_percentage, self.tolerance_value = parse_tolerance_input(
-            self.line_shift_tolerance_str
-        )
+        self.tolerance_is_percentage, self.tolerance_value = parse_tolerance_input(self.line_shift_tolerance_str)
         self.repo_aliases = [alias.lower() for alias in self.repo_aliases]
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> 'GlobalPreferences':
+    def from_args(cls, args: argparse.Namespace) -> "GlobalPreferences":
         return cls(
             verbose=args.verbose,
             dry_run=args.dry_run,

@@ -26,7 +26,9 @@ def _get_github_token() -> Optional[str]:
         return None
 
     try:
-        token_input = input("\n🔑 Enter GitHub Personal Access Token (PAT) for API access (or press Enter to skip): ").strip()
+        token_input = input(
+            "\n🔑 Enter GitHub Personal Access Token (PAT) for API access (or press Enter to skip): "
+        ).strip()
         if token_input:
             return token_input
         print("No GitHub token provided by user. Skipping API fallback.", file=sys.stderr)
@@ -52,7 +54,10 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
         data = response_json.json()
 
         if isinstance(data, list) or data.get("type") != "file":
-            print(f"❌ API Fallback: Path {path} is not a file (type: {data.get('type', 'directory' if isinstance(data, list) else 'unknown')}).", file=sys.stderr)
+            print(
+                f"❌ API Fallback: Path {path} is not a file (type: {data.get('type', 'directory' if isinstance(data, list) else 'unknown')}).",
+                file=sys.stderr,
+            )
             return None
         if "content" in data and data.get("encoding") == "base64":
             decoded_content = base64.b64decode(data["content"]).decode("utf-8")
@@ -67,7 +72,9 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
 
             return decoded_content.splitlines()
         if "download_url" in data and data["download_url"]:
-            response_download = requests.get(data["download_url"], headers=headers, timeout=20) # Use token for download_url
+            response_download = requests.get(
+                data["download_url"], headers=headers, timeout=20
+            )  # Use token for download_url
             response_download.raise_for_status()
             if not response_download.text:
                 print(f"⚠️ API Fallback: Downloaded content for {path} is empty.", file=sys.stderr)
@@ -95,14 +102,23 @@ def fetch_raw_github_content_from_url(github_file_url: str) -> Optional[List[str
         return response.text.splitlines()
     except requests.exceptions.HTTPError as e_http:
         if 400 <= e_http.response.status_code < 500:  # Client error (4xx)
-            print(f"⚠️ Client error ({e_http.response.status_code}) fetching from {raw_url}. Status: {e_http.response.reason}. Attempting API fallback...", file=sys.stderr)
+            print(
+                f"⚠️ Client error ({e_http.response.status_code}) fetching from {raw_url}. Status: {e_http.response.reason}. Attempting API fallback...",
+                file=sys.stderr,
+            )
             token = _get_github_token()
             if token:
                 return _fetch_github_content_with_api(owner, repo, ref, path, token)
-            print(f"❌ Failed to fetch from {raw_url} (status {e_http.response.status_code}) and no token for API fallback.", file=sys.stderr)
+            print(
+                f"❌ Failed to fetch from {raw_url} (status {e_http.response.status_code}) and no token for API fallback.",
+                file=sys.stderr,
+            )
             return None
         # Server error (5xx) or other HTTPError not in 4xx range
-        print(f"❌ HTTP error {e_http.response.status_code} fetching raw content from {raw_url}: {e_http.response.reason}", file=sys.stderr)
+        print(
+            f"❌ HTTP error {e_http.response.status_code} fetching raw content from {raw_url}: {e_http.response.reason}",
+            file=sys.stderr,
+        )
         return None
     except requests.exceptions.RequestException as e:  # Catch other initial request errors
         print(f"❌ Network error fetching raw content from {raw_url}: {e}", file=sys.stderr)
@@ -123,5 +139,5 @@ def open_urls_in_browser(urls_with_descriptions: List[tuple[str, str]]) -> None:
         print(f"🌐 Attempting to open {description}: {url}")
         try:
             webbrowser.open(url)
-        except webbrowser.Error as e: # webbrowser.Error is the base class for errors from this module
+        except webbrowser.Error as e:  # webbrowser.Error is the base class for errors from this module
             print(f"⚠️ Could not open URL '{url}' in browser: {e}. Please open manually.")

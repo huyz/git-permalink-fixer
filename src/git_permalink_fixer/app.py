@@ -41,6 +41,7 @@ class ResolutionState(TypedDict):
     current_le: Optional[int]
     custom_tolerance_str: Optional[str]
 
+
 class PermalinkFixerApp:
     repo_root: Path
 
@@ -76,7 +77,6 @@ class PermalinkFixerApp:
         )
         self._vprint("-" * 50)
 
-
     def _vprint(self, *args, **kwargs):
         """Prints only if verbose mode is enabled."""
         if self.global_prefs.verbose:
@@ -104,9 +104,7 @@ class PermalinkFixerApp:
 
         ignored_paths_set: Optional[Set[Path]] = None
         try:
-            ignored_paths_set= (
-                load_ignored_paths() if self.global_prefs.respect_gitignore else set()
-            )
+            ignored_paths_set = load_ignored_paths() if self.global_prefs.respect_gitignore else set()
         except RuntimeError as e:
             self._vprint(
                 f"⚠️ Warning: Could not get git-ignored paths: {e}. Gitignore rules will not be applied effectively."
@@ -143,9 +141,7 @@ class PermalinkFixerApp:
                     # Peek into the git-ignored file to see if it contains permalinks for logging
                     # purposes
                     try:
-                        with open(
-                            file_path, "r", encoding="utf-8", errors="ignore"
-                        ) as ignored_file:
+                        with open(file_path, "r", encoding="utf-8", errors="ignore") as ignored_file:
                             lines = ignored_file.readlines()
                         # Use a temporary count, don't affect main global_found_count or detailed logging
                         permalinks_in_ignored_file, _ = extract_permalinks_from_file(
@@ -172,10 +168,7 @@ class PermalinkFixerApp:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
 
-                (
-                    permalinks_in_file,
-                    global_found_count
-                ) = extract_permalinks_from_file(
+                (permalinks_in_file, global_found_count) = extract_permalinks_from_file(
                     file_path,
                     lines,
                     self.repo_root,
@@ -196,15 +189,17 @@ class PermalinkFixerApp:
         self,
         original_permalink_info: PermalinkInfo,
         original_content_snippet: List[str],
-        target_description: str, # e.g., "ancestor commit X:path/to/file" or "URL Y"
+        target_description: str,  # e.g., "ancestor commit X:path/to/file" or "URL Y"
         sample_target_content: Optional[List[str]],
-        line_shift_tolerance: int
+        line_shift_tolerance: int,
     ):
         """Helper to log detailed mismatch information if verbose."""
         if not self.global_prefs.verbose:
             return
 
-        self._vprint(f"  ⚠️ Content mismatch for {original_permalink_info.url_path} L{original_permalink_info.line_start}{'-' + str(original_permalink_info.line_end) if original_permalink_info.line_end else ''} in {target_description} (tolerance: {line_shift_tolerance}).")
+        self._vprint(
+            f"  ⚠️ Content mismatch for {original_permalink_info.url_path} L{original_permalink_info.line_start}{'-' + str(original_permalink_info.line_end) if original_permalink_info.line_end else ''} in {target_description} (tolerance: {line_shift_tolerance})."
+        )
         self._vprint(f"    ⚰️ Original content ({len(original_content_snippet)} lines):")
         for line in original_content_snippet:
             self._vprint(f"      | {line}")
@@ -239,8 +234,8 @@ class PermalinkFixerApp:
             if target_url:
                 gh_info = parse_github_blob_permalink(target_url)
                 parsed_ls, parsed_le = (gh_info[4], gh_info[5]) if gh_info else (None, None)
-                return True, parsed_ls, parsed_le # Vacuously true, return line numbers from target URL if present
-            return True, None, None # Vacuously true for git targets
+                return True, parsed_ls, parsed_le  # Vacuously true, return line numbers from target URL if present
+            return True, None, None  # Vacuously true for git targets
 
         orig_lines = get_file_content_at_commit(original.commit_hash, original.url_path)
         if not orig_lines:
@@ -276,13 +271,13 @@ class PermalinkFixerApp:
                 self._vprint(
                     f"⚠️ Verifying against non-GitHub or unparseable URL '{target_url}'. Assuming content matches."
                 )
-                return True, None, None # Matches old behavior for non-GitHub URLs
+                return True, None, None  # Matches old behavior for non-GitHub URLs
         elif target_commit_hash and target_url_path:
             repl_lines = get_file_content_at_commit(target_commit_hash, target_url_path)
         else:
             raise ValueError("Either target_url or (target_commit_hash and target_url_path) must be provided.")
 
-        if repl_lines is None: # Fetch failed for GitHub URL or git target
+        if repl_lines is None:  # Fetch failed for GitHub URL or git target
             return False, None, None
 
         # 3. Determine effective tolerance
@@ -313,8 +308,9 @@ class PermalinkFixerApp:
                         shifted_repl_start_idx = repl_ls - 1 + shift
                     else:
                         shifted_repl_start_idx = orig_start_idx + shift
-                    if 0 <= shifted_repl_start_idx < len(repl_lines) and \
-                       (shifted_repl_start_idx + num_orig_lines) <= len(repl_lines):
+                    if 0 <= shifted_repl_start_idx < len(repl_lines) and (
+                        shifted_repl_start_idx + num_orig_lines
+                    ) <= len(repl_lines):
                         repl_content = [
                             line.strip()
                             for line in repl_lines[shifted_repl_start_idx : shifted_repl_start_idx + num_orig_lines]
@@ -326,18 +322,20 @@ class PermalinkFixerApp:
                             new_repl_le = new_repl_ls + num_orig_lines - 1 if num_orig_lines > 1 else None
                             # Ensure line numbers are positive
                             if new_repl_ls <= 0 or (new_repl_le is not None and new_repl_le <= 0):
-                                continue # Invalid shift result
+                                continue  # Invalid shift result
                             return True, new_repl_ls, new_repl_le
             self._display_content_mismatch(
-                original, orig_content,
-                target_url if target_url else f"{target_commit_hash[:8] if target_commit_hash else ''}:{target_url_path}",
+                original,
+                orig_content,
+                target_url
+                if target_url
+                else f"{target_commit_hash[:8] if target_commit_hash else ''}:{target_url_path}",
                 sample_target_content,
-                eff_tolerance
+                eff_tolerance,
             )
             return False, None, None  # No match found after trying all shifts
         except IndexError:
             return False, None, None
-
 
     def _construct_repl_permalink(
         self,
@@ -352,14 +350,14 @@ class PermalinkFixerApp:
         # Use current repo's owner/repo if not extractable (should not happen for valid permalinks)
         git_owner = match.group(1) if match else self.git_owner
         git_repo = match.group(2) if match else self.git_repo
-        url_type = match.group(3) if match else "blob" # Default to blob if somehow not found
+        url_type = match.group(3) if match else "blob"  # Default to blob if somehow not found
 
         base_url_parts = [f"https://github.com/{git_owner}/{git_repo}"]
-        if url_type == "tree" or not repl_url_path: # Tree link or blob link with no path (points to commit root)
+        if url_type == "tree" or not repl_url_path:  # Tree link or blob link with no path (points to commit root)
             base_url_parts.extend(["tree", repl_commit])
             return "/".join(base_url_parts)
 
-        base_url_parts.extend([url_type, repl_commit, repl_url_path.lstrip('/')])
+        base_url_parts.extend([url_type, repl_commit, repl_url_path.lstrip("/")])
         url_no_frag = "/".join(base_url_parts)
         # update_url_with_line_numbers handles adding #L fragments correctly
         return update_github_url_with_line_numbers(url_no_frag, repl_ls, repl_le)
@@ -404,7 +402,11 @@ class PermalinkFixerApp:
 
         if state["current_is_external"]:
             if not current_external_url_base:
-                return "needs_external_url", "No external URL specified. Provide one ('u') or choose another option.", None
+                return (
+                    "needs_external_url",
+                    "No external URL specified. Provide one ('u') or choose another option.",
+                    None,
+                )
             if original.line_start is not None:
                 verify_url = update_github_url_with_line_numbers(
                     current_external_url_base, state["current_ls"], state["current_le"]
@@ -417,8 +419,16 @@ class PermalinkFixerApp:
                     print(f"✅ Content matches for external URL.")
                     repl_url = update_github_url_with_line_numbers(current_external_url_base, v_ls, v_le)
                     return "resolved", "", repl_url
-                current_tolerance_display = state["custom_tolerance_str"] if state["custom_tolerance_str"] is not None else self.global_prefs.line_shift_tolerance_str
-                return "lines_mismatch_external", f"Line content differs or cannot be verified for external URL {current_external_url_base} (current tolerance: {current_tolerance_display}).", None
+                current_tolerance_display = (
+                    state["custom_tolerance_str"]
+                    if state["custom_tolerance_str"] is not None
+                    else self.global_prefs.line_shift_tolerance_str
+                )
+                return (
+                    "lines_mismatch_external",
+                    f"Line content differs or cannot be verified for external URL {current_external_url_base} (current tolerance: {current_tolerance_display}).",
+                    None,
+                )
 
             # External URL, original had no lines
             repl_url = update_github_url_with_line_numbers(
@@ -429,16 +439,28 @@ class PermalinkFixerApp:
 
         if ancestor_commit:
             if not current_url_path_for_ancestor and original.url_path:
-                return "path_cleared", "Path for ancestor was cleared. Specify a new path ('p') or clear lines ('c') if this is intended for commit root.", None
-            if not current_url_path_for_ancestor and not original.url_path: # Tree link
+                return (
+                    "path_cleared",
+                    "Path for ancestor was cleared. Specify a new path ('p') or clear lines ('c') if this is intended for commit root.",
+                    None,
+                )
+            if not current_url_path_for_ancestor and not original.url_path:  # Tree link
                 repl_url = self._construct_repl_permalink(original, ancestor_commit, None, None, None)
                 print(f"✅ Using tree-style link for ancestor: {repl_url}")
                 return "resolved", "", repl_url
-            if current_url_path_for_ancestor and not file_exists_at_commit(ancestor_commit, current_url_path_for_ancestor):
-                return "path_missing_ancestor", f"File '{current_url_path_for_ancestor}' does not exist in ancestor {ancestor_commit[:8]}.", None
-            if current_url_path_for_ancestor: # Path exists
-                if original.line_start is None: # Original had no lines
-                    repl_url = self._construct_repl_permalink(original, ancestor_commit, current_url_path_for_ancestor, None, None)
+            if current_url_path_for_ancestor and not file_exists_at_commit(
+                ancestor_commit, current_url_path_for_ancestor
+            ):
+                return (
+                    "path_missing_ancestor",
+                    f"File '{current_url_path_for_ancestor}' does not exist in ancestor {ancestor_commit[:8]}.",
+                    None,
+                )
+            if current_url_path_for_ancestor:  # Path exists
+                if original.line_start is None:  # Original had no lines
+                    repl_url = self._construct_repl_permalink(
+                        original, ancestor_commit, current_url_path_for_ancestor, None, None
+                    )
                     print(f"✅ Path exists in ancestor (no line verification needed): {repl_url}")
                     return "resolved", "", repl_url
                 # Original had lines, verify them
@@ -447,26 +469,36 @@ class PermalinkFixerApp:
                     original,
                     target_commit_hash=ancestor_commit,
                     target_url_path=current_url_path_for_ancestor,
-                    custom_tolerance_str=state["custom_tolerance_str"]
+                    custom_tolerance_str=state["custom_tolerance_str"],
                 )
                 if match:
-                    repl_url = self._construct_repl_permalink(original, ancestor_commit, current_url_path_for_ancestor, v_ls, v_le)
-                    orig_line_str = f"L{original.line_start}" + (f"-L{original.line_end}" if original.line_end and original.line_end != original.line_start else "")
+                    repl_url = self._construct_repl_permalink(
+                        original, ancestor_commit, current_url_path_for_ancestor, v_ls, v_le
+                    )
+                    orig_line_str = f"L{original.line_start}" + (
+                        f"-L{original.line_end}"
+                        if original.line_end and original.line_end != original.line_start
+                        else ""
+                    )
                     new_line_str = f"L{v_ls}" + (f"-L{v_le}" if v_le and v_le != v_ls else "")
                     if new_line_str == orig_line_str:
                         print(f"✅ Line content matches at {orig_line_str} in ancestor.")
                     else:
-                        print(f"✅ Line content matches, found at {new_line_str} in ancestor (original was {orig_line_str}).")
+                        print(
+                            f"✅ Line content matches, found at {new_line_str} in ancestor (original was {orig_line_str})."
+                        )
                     self._vprint(f"  Match at URL: {repl_url}")
                     return "resolved", "", repl_url
 
-                return "lines_mismatch_ancestor", f"Line content differs in ancestor {ancestor_commit[:8]}:{current_url_path_for_ancestor} (current tolerance: {self.global_prefs.line_shift_tolerance_str}).", None
+                return (
+                    "lines_mismatch_ancestor",
+                    f"Line content differs in ancestor {ancestor_commit[:8]}:{current_url_path_for_ancestor} (current tolerance: {self.global_prefs.line_shift_tolerance_str}).",
+                    None,
+                )
         return "error", "Cannot determine replacement target. No ancestor and no external URL mode.", None
 
     def _resolution_menu_handle_set_url(
-        self,
-        ancestor_commit: Optional[str],
-        state: ResolutionState
+        self, ancestor_commit: Optional[str], state: ResolutionState
     ) -> Tuple[str, ResolutionState]:
         """Handles the 'u' menu choice for setting a new full URL."""
         new_url_input = input("    Enter new full URL: ").strip()
@@ -477,10 +509,13 @@ class PermalinkFixerApp:
         gh_info = parse_github_blob_permalink(new_url_input)
         new_url_ls, new_url_le = (gh_info[4], gh_info[5]) if gh_info else (None, None)
 
-        if ancestor_commit and gh_info and \
-           gh_info[0].lower() == self.git_owner.lower() and \
-           self._normalize_repo_name(gh_info[1]) == self.git_repo.lower() and \
-           gh_info[2] == ancestor_commit:
+        if (
+            ancestor_commit
+            and gh_info
+            and gh_info[0].lower() == self.git_owner.lower()
+            and self._normalize_repo_name(gh_info[1]) == self.git_repo.lower()
+            and gh_info[2] == ancestor_commit
+        ):
             self._vprint(f"    Parsed as URL for current ancestor commit ({ancestor_commit[:8]}).")
             state["current_is_external"] = False
             state["current_external_url_base"] = None  # Clear to reduce confusion
@@ -488,10 +523,16 @@ class PermalinkFixerApp:
             state["current_ls"], state["current_le"] = new_url_ls, new_url_le
             self._vprint(f"    Set path to '{state['current_url_path_for_ancestor']}' and lines from URL fragment.")
         else:
-            confirm_ext = input(f"    The URL points outside current ancestor context or is not a GitHub file URL. Use it anyway? (y/n): ").strip().lower()
-            if confirm_ext == 'y':
+            confirm_ext = (
+                input(
+                    f"    The URL points outside current ancestor context or is not a GitHub file URL. Use it anyway? (y/n): "
+                )
+                .strip()
+                .lower()
+            )
+            if confirm_ext == "y":
                 state["current_is_external"] = True
-                state["current_external_url_base"] = new_url_input.split('#')[0].split('?')[0]
+                state["current_external_url_base"] = new_url_input.split("#")[0].split("?")[0]
                 state["current_url_path_for_ancestor"] = None
                 state["current_ls"], state["current_le"] = new_url_ls, new_url_le
 
@@ -501,9 +542,7 @@ class PermalinkFixerApp:
         return "state_updated_continue", state
 
     @staticmethod
-    def _resolution_menu_handle_set_line_numbers(
-            state: ResolutionState
-    ) -> Tuple[str, ResolutionState]:
+    def _resolution_menu_handle_set_line_numbers(state: ResolutionState) -> Tuple[str, ResolutionState]:
         """Handles the 'l' menu choice for setting new line numbers."""
         new_lines_input = input("    Enter new line numbers (e.g., 10 or 10-15, or empty to clear): ").strip()
         if not new_lines_input:
@@ -522,18 +561,17 @@ class PermalinkFixerApp:
                         raise ValueError("Line must be positive.")
                     nl_le = None
                 state["current_ls"], state["current_le"] = nl_ls, nl_le
-                print(f"    Set line numbers to: L{state['current_ls']}" + (f"-L{state['current_le']}" if state['current_le'] else ""))
+                print(
+                    f"    Set line numbers to: L{state['current_ls']}"
+                    + (f"-L{state['current_le']}" if state["current_le"] else "")
+                )
             except ValueError as e:
                 print(f"    Invalid line number format: {e}")
                 return "invalid_choice_continue", state
         return "state_updated_continue", state
 
     def _process_resolution_menu_choice(
-        self,
-        menu_choice: str,
-        original: PermalinkInfo,
-        ancestor_commit: Optional[str],
-        state: ResolutionState
+        self, menu_choice: str, original: PermalinkInfo, ancestor_commit: Optional[str], state: ResolutionState
     ) -> Tuple[str, ResolutionState]:
         """
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
@@ -541,9 +579,7 @@ class PermalinkFixerApp:
 
         if menu_choice == "o":
             urls_to_open_list = [("Original URL", original.url)]
-            candidate_display_url = self._construct_url_from_current_state(
-                original, ancestor_commit, state
-            )
+            candidate_display_url = self._construct_url_from_current_state(original, ancestor_commit, state)
             if candidate_display_url:
                 urls_to_open_list.append(("Candidate Replacement URL", candidate_display_url))
             open_urls_in_browser(urls_to_open_list)
@@ -555,17 +591,26 @@ class PermalinkFixerApp:
             else:
                 state["current_url_path_for_ancestor"] = new_path_input
                 state["current_is_external"] = False
-                state["current_ls"], state["current_le"] = original.line_start, original.line_end # Reset lines
-                print(f"    Set path for ancestor to: '{state['current_url_path_for_ancestor']}'. Lines reset to original.")
+                state["current_ls"], state["current_le"] = original.line_start, original.line_end  # Reset lines
+                print(
+                    f"    Set path for ancestor to: '{state['current_url_path_for_ancestor']}'. Lines reset to original."
+                )
         elif menu_choice == "l":
             return self._resolution_menu_handle_set_line_numbers(state)
         elif menu_choice == "u":
             return self._resolution_menu_handle_set_url(ancestor_commit, state)
-        elif menu_choice == "t" and ancestor_commit and state["current_url_path_for_ancestor"] and original.line_start is not None:
+        elif (
+            menu_choice == "t"
+            and ancestor_commit
+            and state["current_url_path_for_ancestor"]
+            and original.line_start is not None
+        ):
             try:
-                new_tolerance_input = input(f"    Enter new line shift tolerance (e.g., 5 or 10%, 0 or 0% to disable): ").strip()
+                new_tolerance_input = input(
+                    f"    Enter new line shift tolerance (e.g., 5 or 10%, 0 or 0% to disable): "
+                ).strip()
                 # Validate by parsing, but store the string
-                _ = parse_tolerance_input(new_tolerance_input) # Will raise ValueError if invalid
+                _ = parse_tolerance_input(new_tolerance_input)  # Will raise ValueError if invalid
                 state["custom_tolerance_str"] = new_tolerance_input
                 print(f"    Tolerance for next check set to: {state['custom_tolerance_str']}")
             except ValueError as e:
@@ -591,6 +636,7 @@ class PermalinkFixerApp:
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
         Returns (repl_url, aborted)
         """
+
         def display_resolution_menu(
             current_problem: str,
             current_url_path_for_ancestor: Optional[str],
@@ -612,17 +658,14 @@ class PermalinkFixerApp:
                         f"  t) Retry content check with different line shift tolerance (currently global: {self.global_prefs.line_shift_tolerance_str})"
                     )
                     print("  c) Clear line numbers from replacement and accept")
-            print(
-                "  k) Keep candidate URL as is (proceed to Action Menu, URL may be broken)"
-            )
+            print("  k) Keep candidate URL as is (proceed to Action Menu, URL may be broken)")
             print("  a) Abort replacement for this permalink (skip)")
 
         # Check cache first
         if original.url in self.resolved_repl_cache:
             cached_repl_url = self.resolved_repl_cache[original.url]
             self._vprint(f"  ✅ Found cached replacement for {original.url}: {cached_repl_url}")
-            return cached_repl_url, False # Not aborted
-
+            return cached_repl_url, False  # Not aborted
 
         state: ResolutionState = {
             "current_is_external": ancestor_commit is None,
@@ -634,38 +677,36 @@ class PermalinkFixerApp:
         }
 
         if state["current_is_external"]:
-            self._vprint(f"  ℹ️ Original commit {original.commit_hash[:8]} has no suitable ancestor in {self.global_prefs.main_branch} or one was not provided.")
+            self._vprint(
+                f"  ℹ️ Original commit {original.commit_hash[:8]} has no suitable ancestor in {self.global_prefs.main_branch} or one was not provided."
+            )
             self._vprint(f"     User will need to provide a full replacement URL or skip this permalink.")
 
-        while True: # Loop for interactive resolution
+        while True:  # Loop for interactive resolution
             resolution_status, problem_description, resolved_url = self._evaluate_current_resolution_candidate(
                 original, ancestor_commit, state
             )
-            state["custom_tolerance_str"] = None # Reset after use
+            state["custom_tolerance_str"] = None  # Reset after use
 
             if resolution_status == "resolved":
                 # Success messages are printed by _evaluate_current_resolution_candidate
                 return resolved_url, False
 
             display_resolution_menu(
-                problem_description,
-                state["current_url_path_for_ancestor"],
-                original.line_start is not None
+                problem_description, state["current_url_path_for_ancestor"], original.line_start is not None
             )
             menu_choice = input("\nSelect resolution option: ").strip().lower()
 
             control_flow, new_state = self._process_resolution_menu_choice(
                 menu_choice, original, ancestor_commit, state
             )
-            state = new_state # Update state
+            state = new_state  # Update state
 
             if control_flow == "abort":
                 print("    Aborting replacement for this permalink.")
                 return None, True
             if control_flow == "resolve_with_current":
-                repl_url_to_keep = self._construct_url_from_current_state(
-                    original, ancestor_commit, state
-                )
+                repl_url_to_keep = self._construct_url_from_current_state(original, ancestor_commit, state)
                 if repl_url_to_keep:
                     print(f"✅ Keeping replacement URL as is")
                     return repl_url_to_keep, False
@@ -678,7 +719,7 @@ class PermalinkFixerApp:
         original: PermalinkInfo,
         repl_url: Optional[str],  # The fully formed candidate replacement URL
         is_commit_slated_for_tagging: bool,
-        auto_action_directive_for_commit: Optional[str] = None, # From 'rc' or 'sc'
+        auto_action_directive_for_commit: Optional[str] = None,  # From 'rc' or 'sc'
     ) -> tuple[str, Optional[str]]:
         """
         Prompts the user for the action (replace, tag, skip) for a permalink and handles remembering
@@ -694,17 +735,21 @@ class PermalinkFixerApp:
         # Priority 1: Commit-level auto directive (from 'rc' or 'sc' for this commit group)
         if repl_url and auto_action_directive_for_commit == "replace":
             auto_chosen_action = "replace"
-            self._vprint(f"    🤖 Commit-level 'replace' directive: Auto-choosing 'replace' for '{original.url[-50:]}'.")
+            self._vprint(
+                f"    🤖 Commit-level 'replace' directive: Auto-choosing 'replace' for '{original.url[-50:]}'."
+            )
         elif not repl_url and auto_action_directive_for_commit == "skip":
             # `sc` (skip commit group) is a fallback choice.
             # It applies if no replacement URL is available for the current permalink.
             auto_chosen_action = "skip"
-            self._vprint(f"    🤖 Commit-level 'skip' directive (fallback): Auto-choosing 'skip' for '{original.url[-50:]}'.")
+            self._vprint(
+                f"    🤖 Commit-level 'skip' directive (fallback): Auto-choosing 'skip' for '{original.url[-50:]}'."
+            )
 
         # Priority 2: Global auto flags (--auto-accept-replace, --auto-fallback)
         # Only if not already decided by commit-level directive
         if not auto_chosen_action:
-            if repl_url: # Replacement is possible
+            if repl_url:  # Replacement is possible
                 if self.session_prefs.auto_accept_replace:
                     auto_chosen_action = "replace"
                     self._vprint(f"    🤖 --auto-accept-replace: Auto-choosing 'replace' for '{original.url[-50:]}'.")
@@ -723,24 +768,28 @@ class PermalinkFixerApp:
             if repl_url:  # Replacement is possible
                 if self.session_prefs.remembered_action_with_repl == "replace":
                     auto_chosen_action = "replace"
-                    self._vprint(f"    🤖 Remembered 'replace' (global): Auto-choosing 'replace' for '{original.url[-50:]}'.")
+                    self._vprint(
+                        f"    🤖 Remembered 'replace' (global): Auto-choosing 'replace' for '{original.url[-50:]}'."
+                    )
             else:  # Fallback
                 if self.session_prefs.remembered_action_without_repl == "tag":
                     auto_chosen_action = "tag"
-                    self._vprint(f"    🤖 Remembered 'tag' (global fallback): Auto-choosing 'tag' for '{original.url[-50:]}'.")
+                    self._vprint(
+                        f"    🤖 Remembered 'tag' (global fallback): Auto-choosing 'tag' for '{original.url[-50:]}'."
+                    )
                 elif self.session_prefs.remembered_action_without_repl == "skip":
                     auto_chosen_action = "skip"
-                    self._vprint(f"    🤖 Remembered 'skip' (global fallback): Auto-choosing 'skip' for '{original.url[-50:]}'.")
+                    self._vprint(
+                        f"    🤖 Remembered 'skip' (global fallback): Auto-choosing 'skip' for '{original.url[-50:]}'."
+                    )
 
         if auto_chosen_action:
-            return auto_chosen_action, None # Auto actions don't set "remember_this_choice" for future global use
+            return auto_chosen_action, None  # Auto actions don't set "remember_this_choice" for future global use
 
         ### Then, If no auto-action was taken, proceed to display the interactive prompt
 
         print("\n❓ ACTIONS:")
-        print(
-            f"  o) Open {'original & replacement URLs' if repl_url else 'original URL'} in browser"
-        )
+        print(f"  o) Open {'original & replacement URLs' if repl_url else 'original URL'} in browser")
 
         # Replacement is offered if a repl_url has been successfully verified of manually provided
         if repl_url:
@@ -766,13 +815,9 @@ class PermalinkFixerApp:
             if repl_url:
                 prompt_options_list.extend(["r", "rc", "ra"])
             prompt_options_list.append("-t" if is_commit_slated_for_tagging else "t")
-            prompt_options_list.append(
-                "ta"
-            )  # Always offer tag all, context handled by remember key
+            prompt_options_list.append("ta")  # Always offer tag all, context handled by remember key
             prompt_options_list.extend(["s", "sc", "sa"])
-            menu_choice = (
-                input(f"\nSelect action ({','.join(prompt_options_list)}): ").strip().lower()
-            )
+            menu_choice = input(f"\nSelect action ({','.join(prompt_options_list)}): ").strip().lower()
 
             if menu_choice == "o":
                 urls_to_open_list = [("original URL", original.url)]
@@ -812,7 +857,7 @@ class PermalinkFixerApp:
         index: int,
         total: int,
         is_commit_slated_for_tagging: bool,
-        auto_action_directive_for_commit: Optional[str] = None, # "replace" or "skip"
+        auto_action_directive_for_commit: Optional[str] = None,  # "replace" or "skip"
     ) -> Tuple[str, Optional[str]]:  # Returns (action_str, final_repl_url_if_action_is_replace)
         """
         Process a permalink (for a given file, for a given commit), including verifying content match,
@@ -825,9 +870,7 @@ class PermalinkFixerApp:
         print(f"\n    [*] {index_msg} {'- ' * ((75 - len(index_msg)) // 2)}")
         print("      🚧 PERMALINK PROTECTION NEEDED")
         print()
-        print(
-            f"📄 Found in: {original.found_in_file.relative_to(self.repo_root)}:{original.found_at_line}"
-        ) # type: ignore
+        print(f"📄 Found in: {original.found_in_file.relative_to(self.repo_root)}:{original.found_at_line}")  # type: ignore
         print(f"🔗 Original URL: {original.url}")
         self._vprint(f"⛓️‍💥 Original commit: {original.commit_hash[:8]} (not in {self.global_prefs.main_branch})")
         if is_commit_slated_for_tagging:
@@ -839,37 +882,30 @@ class PermalinkFixerApp:
         # --- Stage 1: Resolve File Path/URL for Replacement ---
         if ancestor_commit:  # Only offer path/URL resolution if an ancestor context exists
             if ancestor_info := get_commit_info(ancestor_commit):
-                self._vprint(
-                    f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}"
-                )
+                self._vprint(f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}")
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
             if original.url_path:  # Only if the original permalink pointed to a file
-                repl_url, aborted_resolution = self._resolve_replacement_interactively(
-                    original,
-                    ancestor_commit
-                )
+                repl_url, aborted_resolution = self._resolve_replacement_interactively(original, ancestor_commit)
                 if aborted_resolution:
                     return "skip", None
                 # repl_url is now the fully resolved URL or None
-            else: # E.g., tree link, direct replacement with ancestor
+            else:  # E.g., tree link, direct replacement with ancestor
                 repl_url = self._construct_repl_permalink(original, ancestor_commit, None, None, None)
 
-        else: # No ancestor, resolution relies on user providing a full URL
+        else:  # No ancestor, resolution relies on user providing a full URL
             self._vprint("No ancestor commit. User must provide a full URL or skip/tag.")
             repl_url, aborted_resolution = self._resolve_replacement_interactively(
                 original,
-                None # No ancestor context
+                None,  # No ancestor context
             )
             if aborted_resolution:
                 return "skip", None
 
         if repl_url:
             print(f"✨ Suggested replacement URL: {repl_url}")
-        else: # No ancestor, and user didn't provide a URL
-            print(
-                "  ℹ️ No common ancestor found and no alternative URL provided by user."
-            )
+        else:  # No ancestor, and user didn't provide a URL
+            print("  ℹ️ No common ancestor found and no alternative URL provided by user.")
 
         # --- Stage 2: Action Prompt ---
         action, remember_this_choice = self._prompt_user_for_action(
@@ -891,7 +927,9 @@ class PermalinkFixerApp:
                 # Cache the successful resolution
                 self.resolved_repl_cache[original.url] = repl_url
                 return action, repl_url
-            self._vprint(f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Falling back to skip.")
+            self._vprint(
+                f"  ⚠️ Warning: Action '{action}' chosen but no replacement URL available for {original.url}. Falling back to skip."
+            )
             action = "skip"
         return action, None
 
@@ -908,18 +946,17 @@ class PermalinkFixerApp:
         """
         pending_repls: List[Tuple[PermalinkInfo, str]] = []
         pending_tag: Optional[Tuple[str, Dict[str, str]]] = None
-        auto_action_directive_for_rest_in_commit: Optional[str] = None # "replace" or "skip"
+        auto_action_directive_for_rest_in_commit: Optional[str] = None  # "replace" or "skip"
 
         ### First, determine if commit is slated for tagging based on remembered choices
 
         commit_is_currently_slated_for_tagging = False
-        if (ancestor_commit and self.session_prefs.remembered_action_with_repl == "tag") or \
-                (not ancestor_commit and self.session_prefs.remembered_action_without_repl == "tag"):
+        if (ancestor_commit and self.session_prefs.remembered_action_with_repl == "tag") or (
+            not ancestor_commit and self.session_prefs.remembered_action_without_repl == "tag"
+        ):
             commit_is_currently_slated_for_tagging = True
             pending_tag = (commit_hash, commit_info)
-            self._vprint(
-                f"  ℹ️ Commit {commit_hash[:8]} is initially slated for tagging due to remembered choice."
-            )
+            self._vprint(f"  ℹ️ Commit {commit_hash[:8]} is initially slated for tagging due to remembered choice.")
 
         ### Then iterate through all the files referencing this commit
 
@@ -940,7 +977,7 @@ class PermalinkFixerApp:
             permalinks_in_this_file.sort(key=lambda p_info: p_info.found_at_line)
 
             print(
-                f"\n  [*] File #{file_group_idx + 1}/{len(sorted_file_paths)}: {file_path.relative_to(self.repo_root)} " # type: ignore
+                f"\n  [*] File #{file_group_idx + 1}/{len(sorted_file_paths)}: {file_path.relative_to(self.repo_root)} "  # type: ignore
                 f"({len(permalinks_in_this_file)} permalink(s) for this commit)"
             )
 
@@ -948,15 +985,13 @@ class PermalinkFixerApp:
             while permalink_for_this_file_idx < len(permalinks_in_this_file):
                 permalink = permalinks_in_this_file[permalink_for_this_file_idx]
 
-                action, repl_url = (
-                    self._process_permalink(
-                        permalink,
-                        ancestor_commit,
-                        index=commit_wide_repl_idx,
-                        total=len(commit_permalinks),
-                        is_commit_slated_for_tagging=commit_is_currently_slated_for_tagging,
-                        auto_action_directive_for_commit=auto_action_directive_for_rest_in_commit
-                    )
+                action, repl_url = self._process_permalink(
+                    permalink,
+                    ancestor_commit,
+                    index=commit_wide_repl_idx,
+                    total=len(commit_permalinks),
+                    is_commit_slated_for_tagging=commit_is_currently_slated_for_tagging,
+                    auto_action_directive_for_commit=auto_action_directive_for_rest_in_commit,
                 )
 
                 if action == "untag":
@@ -975,11 +1010,11 @@ class PermalinkFixerApp:
                     self._vprint(
                         f"    🤖 User chose 'replace commit'. Will auto-accept replace for rest of commit {commit_hash[:8]}."
                     )
-                    if not repl_url: # Should not happen
+                    if not repl_url:  # Should not happen
                         self._vprint(
                             f"  🐛 Action was 'replace_commit_group' but no replacement URL was provided for '{permalink.url[-50:]}'. Skipping…"
                         )
-                        action = "skip" # Fallback to skip if URL is missing
+                        action = "skip"  # Fallback to skip if URL is missing
 
                 elif action == "skip_commit_group":
                     auto_action_directive_for_rest_in_commit = (action := "skip")
@@ -1000,9 +1035,7 @@ class PermalinkFixerApp:
                             print(
                                 "\n⚠️ Commit is now slated for tagging, but you previously chose to REPLACE some permalink(s) for this commit."
                             )
-                            print(
-                                "   1) Tag commit & DISCARD all previous REPLACEMENT choices for this commit."
-                            )
+                            print("   1) Tag commit & DISCARD all previous REPLACEMENT choices for this commit.")
                             print(
                                 "   2) Tag commit & KEEP previous REPLACEMENTS. Stop offering to replace other permalinks for this commit."
                             )
@@ -1071,7 +1104,9 @@ class PermalinkFixerApp:
             print("  y) Yes, fetch this commit from 'origin'")
             print("    ya) Yes to all - fetch this and all subsequent missing commits (sets fetch-mode to 'always')")
             print("  n) No, do not fetch this commit")
-            print("    na) No to all - skip fetching for this and all subsequent missing commits (sets fetch-mode to 'never')")
+            print(
+                "    na) No to all - skip fetching for this and all subsequent missing commits (sets fetch-mode to 'never')"
+            )
             choice = input("     Choose an action (y/n/ya/na): ").strip().lower()
 
             if choice == "y":
@@ -1113,11 +1148,10 @@ class PermalinkFixerApp:
                 else:
                     # Fetch failed, commit still not available
                     print(f"  ❌ Fetch attempt for {commit_hash} failed or commit still not found.")
-            else: # Not attempting fetch
+            else:  # Not attempting fetch
                 self._vprint(f"  ⏩ Skipping fetch for commit {commit_hash} (fetch-mode is 'never' or user declined).")
 
         return commit_available
-
 
     def _process_commit(
         self, commit_hash: str, commit_permalinks: List[PermalinkInfo], index: int, total: int
@@ -1154,7 +1188,9 @@ class PermalinkFixerApp:
         print(f"  ⛓️‍💥️ Not in {self.global_prefs.main_branch}")
         if ancestor_commit := find_closest_ancestor_in_main(commit_hash, self.global_prefs.main_branch):
             ancestor_info = get_commit_info(ancestor_commit)
-            print(f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}")
+            print(
+                f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}"
+            )
             if ancestor_info:
                 self._vprint(f"    👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
         else:
@@ -1174,16 +1210,12 @@ class PermalinkFixerApp:
                 content = f.readlines()
 
             if permalink.found_at_line > len(content) or permalink.found_at_line < 1:
-                print(
-                    f"  ❌ Line number {permalink.found_at_line} out of range in {file_path}. Cannot replace."
-                )
+                print(f"  ❌ Line number {permalink.found_at_line} out of range in {file_path}. Cannot replace.")
                 return
 
             original_line = content[permalink.found_at_line - 1]
             if permalink.url not in original_line:
-                print(
-                    f"  ⚠️ Original URL not found in line {permalink.found_at_line} of {file_path}. Cannot replace."
-                )
+                print(f"  ⚠️ Original URL not found in line {permalink.found_at_line} of {file_path}. Cannot replace.")
                 return
 
             content[permalink.found_at_line - 1] = original_line.replace(permalink.url, repl_url, 1)
@@ -1195,9 +1227,7 @@ class PermalinkFixerApp:
                 f"  ✅ Replaced permalink in {file_path.relative_to(self.repo_root)} at line {permalink.found_at_line}"
             )
         except (IOError, OSError, UnicodeDecodeError, PermissionError) as e:
-            print(
-                f"  ❌ Failed to replace permalink in {permalink.found_in_file.relative_to(self.repo_root)}: {e}"
-            )
+            print(f"  ❌ Failed to replace permalink in {permalink.found_in_file.relative_to(self.repo_root)}: {e}")
 
     def _push_created_tags(self, operation_set: OperationSet) -> None:
         """
@@ -1215,7 +1245,9 @@ class PermalinkFixerApp:
             if entry.get("status") == "would_create"
         ]
 
-        if not tags_successfully_created_locally and not (self.global_prefs.dry_run and tags_that_would_be_created_in_dry_run):
+        if not tags_successfully_created_locally and not (
+            self.global_prefs.dry_run and tags_that_would_be_created_in_dry_run
+        ):
             self._vprint("  ℹ️ No new tags were actually created locally or would be created in dry run.")
             return
 
@@ -1266,19 +1298,17 @@ class PermalinkFixerApp:
         # Deduplicate commits_to_tag by commit_hash, keeping the first encountered commit_info
         final_commits_to_tag_ops: List[TagCreationOperation] = []
         seen_hashes = set()
-        for op in reversed(commits_to_tag): # Keep first encountered if multiple for same hash
+        for op in reversed(commits_to_tag):  # Keep first encountered if multiple for same hash
             if op.commit_hash not in seen_hashes:
                 final_commits_to_tag_ops.append(op)
                 seen_hashes.add(op.commit_hash)
-        final_commits_to_tag_ops.reverse() # Process in original order
+        final_commits_to_tag_ops.reverse()  # Process in original order
 
         for op in final_commits_to_tag_ops:
             commit_hash = op.commit_hash
             commit_info = op.commit_info
 
-            tag_name = gen_git_tag_name(
-                commit_hash, commit_info.get("subject", ""), self.global_prefs.tag_prefix
-            )
+            tag_name = gen_git_tag_name(commit_hash, commit_info.get("subject", ""), self.global_prefs.tag_prefix)
             tag_message = f"Preserve permalink reference to: {commit_info.get('subject', 'commit ' + commit_hash[:8])}"
             report_entry_for_this_tag = {
                 "commit_hash": commit_hash,
@@ -1315,9 +1345,7 @@ class PermalinkFixerApp:
         # Actual file modifications and tagging are done later.
         commit_items = examination_set.get_commit_examination_items()
         for index, (commit_hash, commit_permalinks) in enumerate(commit_items):
-            tag_to_create, replacements = self._process_commit(
-                commit_hash, commit_permalinks, index, len(commit_items)
-            )
+            tag_to_create, replacements = self._process_commit(commit_hash, commit_permalinks, index, len(commit_items))
             if tag_to_create:
                 # tag_info_for_commit is (commit_hash, commit_info_dict)
                 operation_set.tags_to_create.append(
@@ -1340,7 +1368,7 @@ class PermalinkFixerApp:
                     {
                         "original_url": op_repl.permalink_info.url,
                         "new_url": op_repl.repl_url,
-                        "found_in_file": str(op_repl.permalink_info.found_in_file.relative_to(self.repo_root)), # type: ignore
+                        "found_in_file": str(op_repl.permalink_info.found_in_file.relative_to(self.repo_root)),  # type: ignore
                         "found_at_line": op_repl.permalink_info.found_at_line,
                     }
                 )
@@ -1350,9 +1378,7 @@ class PermalinkFixerApp:
             # Use the helper method to count unique files involved in replacements
             repls_by_file: Dict[Path, List[PermalinkReplacementOperation]] = {}
             for op_repl in operation_set.replacements:
-                repls_by_file.setdefault(op_repl.permalink_info.found_in_file, []).append(
-                    op_repl
-                )
+                repls_by_file.setdefault(op_repl.permalink_info.found_in_file, []).append(op_repl)
 
             sorted_file_paths_for_replacement = sorted(repls_by_file.keys())
 
@@ -1366,14 +1392,12 @@ class PermalinkFixerApp:
                 )
 
             global_repl_idx = 0
-            for group_idx, file_path_for_repl in enumerate(
-                sorted_file_paths_for_replacement
-            ):
+            for group_idx, file_path_for_repl in enumerate(sorted_file_paths_for_replacement):
                 repls_for_file = repls_by_file[file_path_for_repl]
                 repls_for_file.sort(key=lambda item: item.permalink_info.found_at_line)
 
                 print(
-                    f"\n#{group_idx + 1}/{len(sorted_file_paths_for_replacement)} files: {file_path_for_repl.relative_to(self.repo_root)} ({len(repls_for_file)} replacement(s))" # type: ignore
+                    f"\n#{group_idx + 1}/{len(sorted_file_paths_for_replacement)} files: {file_path_for_repl.relative_to(self.repo_root)} ({len(repls_for_file)} replacement(s))"  # type: ignore
                 )
 
                 for op_repl in repls_for_file:
@@ -1414,7 +1438,9 @@ class PermalinkFixerApp:
             return
 
         num_permalinks = sum(len(c.permalinks) for c in examination_set.commits_to_examine.values())
-        num_unique_files = len(set(p.found_in_file for c in examination_set.commits_to_examine.values() for p in c.permalinks))
+        num_unique_files = len(
+            set(p.found_in_file for c in examination_set.commits_to_examine.values() for p in c.permalinks)
+        )
         self._vprint(
             f"\nFound {num_permalinks} GitHub permalinks in {num_unique_files} unique file(s) referencing {len(examination_set.commits_to_examine)} unique commit(s)"
         )

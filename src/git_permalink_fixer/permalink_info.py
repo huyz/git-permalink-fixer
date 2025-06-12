@@ -14,7 +14,7 @@ class PermalinkInfo:
     found_at_line: int
 
     @staticmethod
-    def count_unique_commits_and_files(permalinks: List['PermalinkInfo']) -> Tuple[int, int]:
+    def count_unique_commits_and_files(permalinks: List["PermalinkInfo"]) -> Tuple[int, int]:
         """Helper to count unique commit hashes and unique files from a list of permalinks."""
         unique_commits = set()
         unique_files = set()

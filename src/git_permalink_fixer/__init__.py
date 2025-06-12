@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import sys
 
@@ -70,9 +68,9 @@ def main():
         choices=[mode.value for mode in FetchMode],
         default=FetchMode.PROMPT.value,
         help="Behavior for fetching commits not found locally from 'origin' remote (default: %(default)s).\n"
-             "  'prompt': Ask for each commit or group.\n"
-             "  'always': Automatically fetch all missing commits.\n"
-             "  'never': Never fetch missing commits.",
+        "  'prompt': Ask for each commit or group.\n"
+        "  'always': Automatically fetch all missing commits.\n"
+        "  'never': Never fetch missing commits.",
     )
     parser.add_argument(
         "--auto-accept-replace",
@@ -95,7 +93,7 @@ def main():
         action="store_true",
         help="Enable non-interactive mode. This is a shorthand for setting:\n"
         "  --auto-accept-replace\n"
-        "  --auto-fallback tag\n" # Default to tagging for preservation in non-interactive
+        "  --auto-fallback tag\n"  # Default to tagging for preservation in non-interactive
         "  --fetch-mode always\n"
         "User will not be prompted for decisions.",
     )
@@ -110,7 +108,7 @@ def main():
 
     if args.non_interactive:
         args.auto_accept_replace = True
-        args.auto_fallback = "tag" # Default fallback for non-interactive is to tag
+        args.auto_fallback = "tag"  # Default fallback for non-interactive is to tag
         args.fetch_mode = FetchMode.ALWAYS_FETCH.value
         if args.verbose:
             print(

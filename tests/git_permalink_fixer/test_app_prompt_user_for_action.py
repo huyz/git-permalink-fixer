@@ -30,8 +30,10 @@ def mock_app_for_prompt_user():
     mock_session_prefs.remembered_action_without_repl = None
 
     # Patch dependencies of PermalinkFixerApp.__init__ that call subprocess
-    with patch("git_permalink_fixer.app.get_repo_root", return_value=Path("/fake/repo")), \
-         patch("git_permalink_fixer.app.get_remote_url", return_value="https://github.com/owner/repo.git"):
+    with (
+        patch("git_permalink_fixer.app.get_repo_root", return_value=Path("/fake/repo")),
+        patch("git_permalink_fixer.app.get_remote_url", return_value="https://github.com/owner/repo.git"),
+    ):
         # Mock PermalinkFixerApp instance
         app = PermalinkFixerApp(mock_global_prefs, mock_session_prefs)
 
@@ -45,9 +47,7 @@ def mock_app_for_prompt_user():
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_replace(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_replace(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["r"]  # Simulate user choosing 'r'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -95,9 +95,7 @@ def test_prompt_user_for_action_replace_no_repl_url(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_tag(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_tag(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["t"]  # Simulate user choosing 't'
     original_permalink = create_mock_permalink_info()
     repl_url = None  # No replacement URL available
@@ -116,9 +114,7 @@ def test_prompt_user_for_action_tag(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_skip(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_skip(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["s"]  # Simulate user choosing 's'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -137,9 +133,7 @@ def test_prompt_user_for_action_skip(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_replace_all(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_replace_all(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["ra"]  # Simulate user choosing 'ra'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -159,12 +153,12 @@ def test_prompt_user_for_action_replace_all(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_tag_all(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_tag_all(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["ta"]  # Simulate user choosing 'ta'
     original_permalink = create_mock_permalink_info()
-    repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12" # Repl URL exists, but user wants to tag all
+    repl_url = (
+        "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"  # Repl URL exists, but user wants to tag all
+    )
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
         original_permalink, repl_url, is_commit_slated_for_tagging=False
@@ -181,9 +175,7 @@ def test_prompt_user_for_action_tag_all(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_skip_all(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_skip_all(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["sa"]  # Simulate user choosing 'sa'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -245,9 +237,7 @@ def test_prompt_user_for_action_skip_commit_group(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_untag(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_untag(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["-t"]  # Simulate user choosing '-t'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -266,9 +256,7 @@ def test_prompt_user_for_action_untag(
 
 @patch("git_permalink_fixer.app.open_urls_in_browser")
 @patch("builtins.input")
-def test_prompt_user_for_action_open_urls(
-    mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
-):
+def test_prompt_user_for_action_open_urls(mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp):
     mock_input.side_effect = ["o", "s"]  # Simulate user choosing 'o' then 's'
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
@@ -481,7 +469,7 @@ def test_prompt_user_for_action_commit_directive_replace_no_repl_url(
         original_permalink,
         repl_url,
         is_commit_slated_for_tagging=False,
-        auto_action_directive_for_commit="replace", # Directive is replace
+        auto_action_directive_for_commit="replace",  # Directive is replace
     )
 
     # Should fall back to skip if repl_url is None
@@ -497,18 +485,18 @@ def test_prompt_user_for_action_priority_commit_directive_over_auto_flags(
     mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
 ):
     # Commit directive should override global auto flags
-    mock_app_for_prompt_user.session_prefs.auto_accept_replace = True # Global says replace
+    mock_app_for_prompt_user.session_prefs.auto_accept_replace = True  # Global says replace
     original_permalink = create_mock_permalink_info()
-    repl_url = None # No repl URL
+    repl_url = None  # No repl URL
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
         original_permalink,
         repl_url,
         is_commit_slated_for_tagging=False,
-        auto_action_directive_for_commit="skip", # Commit directive says skip
+        auto_action_directive_for_commit="skip",  # Commit directive says skip
     )
 
-    assert action == "skip" # Skip directive should win
+    assert action == "skip"  # Skip directive should win
     assert remember_choice is None
     mock_input.assert_not_called()
     mock_open_urls.assert_not_called()
@@ -520,8 +508,8 @@ def test_prompt_user_for_action_priority_auto_flags_over_remembered(
     mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
 ):
     # Global auto flags should override remembered choices
-    mock_app_for_prompt_user.session_prefs.remembered_action_with_repl = "skip" # Remembered says skip
-    mock_app_for_prompt_user.session_prefs.auto_accept_replace = True # Global says replace
+    mock_app_for_prompt_user.session_prefs.remembered_action_with_repl = "skip"  # Remembered says skip
+    mock_app_for_prompt_user.session_prefs.auto_accept_replace = True  # Global says replace
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
 
@@ -532,7 +520,7 @@ def test_prompt_user_for_action_priority_auto_flags_over_remembered(
         auto_action_directive_for_commit=None,
     )
 
-    assert action == "replace" # Global auto-accept should win
+    assert action == "replace"  # Global auto-accept should win
     assert remember_choice is None
     mock_input.assert_not_called()
     mock_open_urls.assert_not_called()
@@ -574,12 +562,14 @@ def test_prompt_user_for_action_remembered_choice_applies(
 def test_prompt_user_for_action_untag_option_shown_when_slated(
     mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
 ):
-    mock_input.side_effect = ["-t"] # User chooses untag
+    mock_input.side_effect = ["-t"]  # User chooses untag
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
-        original_permalink, repl_url, is_commit_slated_for_tagging=True # Commit is slated
+        original_permalink,
+        repl_url,
+        is_commit_slated_for_tagging=True,  # Commit is slated
     )
 
     assert action == "untag"
@@ -599,12 +589,14 @@ def test_prompt_user_for_action_untag_option_shown_when_slated(
 def test_prompt_user_for_action_tag_option_shown_when_not_slated(
     mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
 ):
-    mock_input.side_effect = ["t"] # User chooses tag
+    mock_input.side_effect = ["t"]  # User chooses tag
     original_permalink = create_mock_permalink_info()
     repl_url = "https://github.com/owner/repo/blob/newhash/path/to/file.py#L12"
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
-        original_permalink, repl_url, is_commit_slated_for_tagging=False # Commit is NOT slated
+        original_permalink,
+        repl_url,
+        is_commit_slated_for_tagging=False,  # Commit is NOT slated
     )
 
     assert action == "tag"
@@ -623,9 +615,9 @@ def test_prompt_user_for_action_tag_option_shown_when_not_slated(
 def test_prompt_user_for_action_replace_options_not_shown_if_no_repl_url(
     mock_input, mock_open_urls, mock_app_for_prompt_user: PermalinkFixerApp
 ):
-    mock_input.side_effect = ["t"] # User chooses tag
+    mock_input.side_effect = ["t"]  # User chooses tag
     original_permalink = create_mock_permalink_info()
-    repl_url = None # No replacement URL
+    repl_url = None  # No replacement URL
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
         original_permalink, repl_url, is_commit_slated_for_tagging=False
@@ -648,7 +640,7 @@ def test_prompt_user_for_action_open_urls_no_repl_url(
 ):
     mock_input.side_effect = ["o", "s"]  # Simulate user choosing 'o' then 's'
     original_permalink = create_mock_permalink_info()
-    repl_url = None # No replacement URL
+    repl_url = None  # No replacement URL
 
     action, remember_choice = mock_app_for_prompt_user._prompt_user_for_action(
         original_permalink, repl_url, is_commit_slated_for_tagging=False

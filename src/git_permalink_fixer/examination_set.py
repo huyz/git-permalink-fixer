@@ -8,8 +8,8 @@ from .permalink_info import PermalinkInfo
 class CommitToExamine:
     commit_hash: str
     permalinks: List[PermalinkInfo]
-    commit_info: Optional[Dict[str, str]] = None # Fetched during examination
-    ancestor_commit: Optional[str] = None # Determined during examination
+    commit_info: Optional[Dict[str, str]] = None  # Fetched during examination
+    ancestor_commit: Optional[str] = None  # Determined during examination
 
 
 @dataclass

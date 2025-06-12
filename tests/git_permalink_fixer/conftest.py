@@ -16,7 +16,7 @@ def create_mock_permalink_info(
     line_end=None,
     found_in_file_rel_path="path/to/containing_file.md",
     found_at_line=50,
-    repo_root_base="/fake/repo"
+    repo_root_base="/fake/repo",
 ):
     return PermalinkInfo(
         url=url,
@@ -27,6 +27,7 @@ def create_mock_permalink_info(
         found_in_file=Path(repo_root_base) / found_in_file_rel_path,
         found_at_line=found_at_line,
     )
+
 
 @pytest.fixture
 def mock_app_for_resolution():
@@ -42,13 +43,14 @@ def mock_app_for_resolution():
     mock_session_prefs = MagicMock(spec=SessionPreferences)
     # Set defaults for session prefs as needed by methods under test
 
-    with patch("git_permalink_fixer.app.get_repo_root", return_value=Path("/fake/repo")), \
-        patch("git_permalink_fixer.app.get_remote_url", return_value="https://github.com/owner/repo.git"), \
-        patch("git_permalink_fixer.app.get_github_info_from_url", return_value=("owner", "repo")):
+    with (
+        patch("git_permalink_fixer.app.get_repo_root", return_value=Path("/fake/repo")),
+        patch("git_permalink_fixer.app.get_remote_url", return_value="https://github.com/owner/repo.git"),
+        patch("git_permalink_fixer.app.get_github_info_from_url", return_value=("owner", "repo")),
+    ):
         app = PermalinkFixerApp(mock_global_prefs, mock_session_prefs)
 
     app._vprint = MagicMock()
     # Mock other methods that might be called by the methods under test if they are complex
     # For example, if _verify_content_match calls get_file_content_at_commit, mock that at the app module level
     return app
-

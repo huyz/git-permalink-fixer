@@ -16,5 +16,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     production code; not so much for the test code.
     If you see some odd things or comments, blame Google.
 
-[unreleased]: https://github.com/olivierlacan/keep-a-changelog/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/huyz/git-permalink-fixer/compare/v0.1.0...HEAD
 [v0.1.0]: https://github.com/huyz/git-permalink-fixer/releases/tag/v0.1.0

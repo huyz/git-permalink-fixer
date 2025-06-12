@@ -4,16 +4,16 @@
 [![Build Status](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`git-permalink-fixer` is a command-line tool that scans your project files for GitHub permalinks to specific commit SHAs
-and helps you update them to more resilient references, such as tags or permalinks to the latest commit on a branch that
-still contains the same content.
+`git-permalink-fixer` is a command-line tool that scans your project files for GitHub permalinks (referencing commit
+SHAs) and helps you update them to more resilient references (e.g., permalinks referencing tags or the latest commit on
+the main branch, that still contains the same content) or create tags to preserve the original commits.
 
 ## The Problem
 
 GitHub permalinks using full commit SHAs are great for pointing to a specific version of code at a point in time.
 However, as repositories evolve, commits can become unreachable if branches are rebased or never merged into main.
 
-This tool helps you manage and update these permalinks proactively before GitHub garbage-collects these comits.
+This tool helps you manage and update these permalinks proactively before GitHub garbage-collects these commits.
 
 It finds GitHub commit permalinks in a repository, checks if commits are merged into `main` and, for
 unmerged commits, tries to find the closest ancestor in `main` (and checks that any line references
@@ -21,7 +21,7 @@ still make sense).
 For unmerged commits, it prompts the user to replace its permalinks to new ones pointing to the
 ancestor; it also provides a fallback of tagging the commit to protect it.
 
-Supports GitHub permalinks of the form: form
+Supports GitHub permalinks of the form:
 - `https://github.com/org/project/blob/commit_hash/url_path#Lline_start-Lline_end`
 - `https://github.com/org/project/tree/commit_hash`
 
@@ -47,8 +47,10 @@ Supports GitHub permalinks of the form: form
 
 Requires Python 3.9 or later.
 
+To install from [PyPI](https://pypi.org/project/git-permalink-fixer/):
+
 ```bash
-pip install git-permalink-fixer
+pipx install git-permalink-fixer
 ```
 
 ## Usage
@@ -114,9 +116,19 @@ git-permalink-fixer
     Disable checking `.gitignore`. By default, files ignored by git are skipped.
     Set this flag to include them in the search (current behavior before this flag).
 
+### Environment variables
 
-For example, to scan only the `docs/` directory with a tolerance of 5 lines:
+If a replacement URL points to private repositories, this tool will try to verify that the content at the original
+permalink line(s) matches the content at the suggested new location.
+You can set the following environment variable to authenticate:
+
+- **`GITHUB_TOKEN`**: Personal access token with `repo` scope for private repositories.
+
+### Examples
+
+For example, to generate a JSON report of suggested permalink replacements without making any changes:
+
 ```bash
 cd $REPO_ROOT
-git-permalink-fixer
+git-permalink-fixer --dry-run --non-interactive --output-json-report $(date -I).permalinks-to-replace.json --line-shift-tolerance '10%'
 ```

@@ -1,3 +1,4 @@
+from pathlib import PosixPath
 from unittest.mock import patch
 
 from .conftest import create_mock_permalink_info
@@ -27,7 +28,7 @@ def test_verify_content_match_original_content_not_available(mock_get_content, m
         original, target_commit_hash="target_hash", target_url_path="file.py"
     )
     assert match is False
-    mock_get_content.assert_called_once_with(original.commit_hash, original.url_path)
+    mock_get_content.assert_called_once_with(original.commit_hash, original.url_path, repo_path=PosixPath("/fake/repo"))
 
 
 @patch("git_permalink_fixer.app.get_file_content_at_commit")

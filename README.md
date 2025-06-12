@@ -59,7 +59,7 @@ Navigate to your Git repository's root directory and run:
 
 ```bash
 cd $REPO_ROOT
-git-permalink-fixer
+git-permalink-fixer [path]
 ```
 
 ### Options

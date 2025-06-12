@@ -1,3 +1,4 @@
+from pathlib import PosixPath
 from unittest.mock import patch
 
 from git_permalink_fixer.app import ResolutionState
@@ -110,7 +111,7 @@ def test_evaluate_candidate_ancestor_path_missing(mock_file_exists, mock_verify,
     mock_file_exists.return_value = False  # Path does not exist in ancestor
     status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "path_missing_ancestor"
-    mock_file_exists.assert_called_once_with("anc_hash", "new/path.py")
+    mock_file_exists.assert_called_once_with("anc_hash", "new/path.py", repo_path=PosixPath("/fake/repo"))
 
 
 @patch("git_permalink_fixer.app.PermalinkFixerApp._verify_content_match")

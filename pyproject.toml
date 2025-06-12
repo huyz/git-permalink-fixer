@@ -1,6 +1,6 @@
 [project]
 name = "git-permalink-fixer"
-version = "0.1.0"
+version = "0.2.0"
 description = "A tool to find, replace, and protect GitHub permalinks in your project."
 readme = "README.md"
 license = { file = "LICENSE" }

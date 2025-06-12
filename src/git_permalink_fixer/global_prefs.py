@@ -18,6 +18,7 @@ class GlobalPreferences:
     tag_prefix: str = "permalinks/ref"
     line_shift_tolerance_str: str = "20"
     output_json_report_path: Optional[Path] = None
+    scan_path: Optional[Path] = None  # New: Path to start scanning from
 
     # Derived attributes
     tolerance_is_percentage: bool = field(init=False)
@@ -38,4 +39,5 @@ class GlobalPreferences:
             tag_prefix=args.tag_prefix,
             line_shift_tolerance_str=args.line_shift_tolerance,
             output_json_report_path=Path(args.output_json_report) if args.output_json_report else None,
+            scan_path=args.scan_path,
         )

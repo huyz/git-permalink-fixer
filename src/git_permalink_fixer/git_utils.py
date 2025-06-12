@@ -7,11 +7,17 @@ import sys
 from .constants import GITHUB_REMOTE_RE
 
 
-def get_repo_root() -> Path:
-    """Returns the repo's root in the filesystem"""
+def get_repo_root(start_dir: Optional[Path] = None) -> Path:
+    """Returns the repo's root in the filesystem.
+    If start_dir is provided, 'git rev-parse --show-toplevel' is run
+    as if executed from that directory. Otherwise, it uses the current working directory.
+    """
     try:
+        # If start_dir is provided, git command should be run as if in that directory.
+        # Using cwd for subprocess.run effectively does this for rev-parse.
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
+            cwd=start_dir if start_dir else None,  # Pass start_dir as cwd if provided
             capture_output=True,
             text=True,
             check=True,
@@ -19,18 +25,17 @@ def get_repo_root() -> Path:
         return Path(result.stdout.strip())
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
-        print(
-            f"Error: Could not determine repository root. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
-            file=sys.stderr,
-        )
-        raise RuntimeError(f"Not in a git repository. Failed to run '{subprocess.list2cmdline(e.cmd)}'.") from e
+        context_msg = f"from directory '{start_dir}'" if start_dir else "from current directory"
+        raise RuntimeError(
+            f"Could not determine repository root {context_msg}. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'"
+        ) from e
 
 
-def get_remote_url() -> str:
-    """Get the origin remote URL."""
+def get_remote_url(repo_path: Path) -> str:
+    """Get the origin remote URL from the specified repository path."""
     try:
         result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
+            ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
             check=True,
@@ -45,7 +50,7 @@ def get_remote_url() -> str:
         # the simpler way to extract the URL
         if not GITHUB_REMOTE_RE.match(remote_url):
             result = subprocess.run(
-                ["git", "config", "--get", "remote.origin.url"],
+                ["git", "-C", str(repo_path), "config", "--get", "remote.origin.url"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -62,22 +67,17 @@ def get_remote_url() -> str:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error: Failed to get remote URL. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error: Failed to get remote URL from repo '{repo_path}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         raise RuntimeError("Failed to get remote URL for 'origin'.") from e
 
 
-def load_ignored_paths(repo_root: Optional[Path] = None) -> Set[Path]:
+def load_ignored_paths(repo_root: Path) -> Set[Path]:
     """
     Loads all git-ignored files and directories using 'git status --porcelain=v1 --ignored'.
     Returns a set of absolute Paths.
     """
-    ignored_set = set()
-
-    if repo_root is None:
-        repo_root = get_repo_root()
-
     try:
         # -C self.repo_root ensures the command runs in the repo root.
         # Paths in output are relative to repo_root.
@@ -88,6 +88,7 @@ def load_ignored_paths(repo_root: Optional[Path] = None) -> Set[Path]:
             check=True,
             encoding="utf-8",
         )
+        ignored_set = set()
         for line in result.stdout.splitlines():
             if line.startswith("!! "):
                 # Output is "!! path/to/item", so path is relative to repo root
@@ -124,11 +125,11 @@ def get_github_info_from_url(remote_url: str) -> Tuple[str, str]:
     raise RuntimeError(f"Could not parse GitHub owner/repo from remote URL: {remote_url}")
 
 
-def is_commit_in_main(commit_hash: str, main_branch: str) -> bool:
-    """Check if a commit is reachable from the main branch."""
+def is_commit_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> bool:
+    """Check if a commit is reachable from the main branch in the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", commit_hash, main_branch],
+            ["git", "-C", str(repo_path), "merge-base", "--is-ancestor", commit_hash, main_branch],
             capture_output=True,
             text=True,
             check=False,
@@ -137,20 +138,20 @@ def is_commit_in_main(commit_hash: str, main_branch: str) -> bool:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error during 'is_commit_in_main': Command '{subprocess.list2cmdline(e.cmd)}' failed for commit '{commit_hash}' and branch '{main_branch}' (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error during 'is_commit_in_main' in repo '{repo_path}': Command '{subprocess.list2cmdline(e.cmd)}' failed for commit '{commit_hash}' and branch '{main_branch}' (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         return False
 
 
-def get_file_content_at_commit(commit_hash: str, url_path: str) -> Optional[List[str]]:
-    """Get file content at a specific commit."""
+def get_file_content_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> Optional[List[str]]:
+    """Get file content at a specific commit from the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "show", f"{commit_hash}:{url_path}"],
+            ["git", "-C", str(repo_path), "show", f"{commit_hash}:{url_path}"],
             capture_output=True,
             text=True,
-            check=True,
+            check=True,  # Errors if file/commit doesn't exist
         )
         return result.stdout.splitlines()
     except subprocess.CalledProcessError as e:
@@ -177,11 +178,11 @@ def gen_git_tag_name(commit_hash: str, commit_subject: str, tag_prefix: str) -> 
     return tag_name
 
 
-def git_tag_exists(tag_name: str) -> bool:
-    """Check if a git tag already exists."""
+def git_tag_exists(tag_name: str, repo_path: Path) -> bool:
+    """Check if a git tag already exists in the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", f"refs/tags/{tag_name}"],
+            ["git", "-C", str(repo_path), "rev-parse", f"refs/tags/{tag_name}"],
             capture_output=True,
             text=True,
             check=False,
@@ -190,20 +191,20 @@ def git_tag_exists(tag_name: str) -> bool:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error: Checking existence of tag '{tag_name}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error: Checking existence of tag '{tag_name}' in repo '{repo_path}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         return False
 
 
-def create_git_tag(tag_name: str, commit_hash: str, tag_message: str, dry_run: bool) -> bool:
-    """Executes the git tag command."""
+def create_git_tag(tag_name: str, commit_hash: str, tag_message: str, dry_run: bool, repo_path: Path) -> bool:
+    """Executes the git tag command in the specified repository."""
     if dry_run:
         print(f"🧪 DRY RUN: Would create tag: {tag_name} for commit {commit_hash[:8]} with message '{tag_message}'")
         return True  # Simulate success for dry run
     try:
         subprocess.run(
-            ["git", "tag", "-a", tag_name, commit_hash, "-m", tag_message],
+            ["git", "-C", str(repo_path), "tag", "-a", tag_name, commit_hash, "-m", tag_message],
             capture_output=True,
             text=True,
             check=True,
@@ -219,11 +220,11 @@ def create_git_tag(tag_name: str, commit_hash: str, tag_message: str, dry_run: b
         return False
 
 
-def is_commit_available_locally(commit_hash: str) -> bool:
-    """Check if a commit exists in the repository."""
+def is_commit_available_locally(commit_hash: str, repo_path: Path) -> bool:
+    """Check if a commit exists in the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "cat-file", "-e", commit_hash],
+            ["git", "-C", str(repo_path), "cat-file", "-e", commit_hash],
             capture_output=True,
             text=True,
             check=False,
@@ -232,25 +233,35 @@ def is_commit_available_locally(commit_hash: str) -> bool:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error: Checking existence of commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error: Checking existence of commit '{commit_hash}' in repo '{repo_path}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         return False
 
 
-def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable) -> bool:
+def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable, repo_path: Path) -> bool:
     """
     Attempts to fetch a specific commit from the 'origin' remote.
     Returns True if the fetch command executes successfully (return code 0), False otherwise.
     Note: A successful command doesn't guarantee the commit is now available,
     so the caller should re-check with is_commit_available_locally.
     """
-    vprint_func(f"  Attempting to fetch commit {commit_hash} from 'origin'...")
+    vprint_func(f"  Attempting to fetch commit {commit_hash} from 'origin' for repo '{repo_path}'...")
     try:
         # Using --no-tags to avoid fetching all tags, and --no-write-commit-graph for speed if not needed.
         # Depth is large to ensure we get the commit if it's far back.
         result = subprocess.run(
-            ["git", "fetch", "origin", "--depth=100000", commit_hash, "--no-tags", "--no-write-commit-graph"],
+            [
+                "git",
+                "-C",
+                str(repo_path),
+                "fetch",
+                "origin",
+                "--depth=100000",
+                commit_hash,
+                "--no-tags",
+                "--no-write-commit-graph",
+            ],
             capture_output=True,
             text=True,
             timeout=120,  # Increased timeout for potentially large fetches
@@ -276,12 +287,14 @@ def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable) -> boo
         return False
 
 
-def get_commit_info(commit_hash: str) -> Optional[Dict[str, str]]:
-    """Get commit information."""
+def get_commit_info(commit_hash: str, repo_path: Path) -> Optional[Dict[str, str]]:
+    """Get commit information from the specified repository."""
     try:
         result = subprocess.run(
             [
                 "git",
+                "-C",
+                str(repo_path),
                 "log",
                 "-1",
                 "--format=%H|%s|%an|%ad",
@@ -310,20 +323,20 @@ def get_commit_info(commit_hash: str) -> Optional[Dict[str, str]]:
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error: Failed to get info for commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error: Failed to get info for commit '{commit_hash}' in repo '{repo_path}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         return None
 
 
-def find_closest_ancestor_in_main(commit_hash: str, main_branch: str) -> Optional[str]:
-    """Find the closest ancestor commit that is in the main branch."""
+def find_closest_ancestor_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> Optional[str]:
+    """Find the closest ancestor commit that is in the main branch in the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "merge-base", commit_hash, main_branch],
+            ["git", "-C", str(repo_path), "merge-base", commit_hash, main_branch],
             capture_output=True,
             text=True,
-            check=True,
+            check=True,  # Errors if no common ancestor
         )
         ancestor = result.stdout.strip()
         return ancestor if ancestor else None
@@ -336,19 +349,19 @@ def find_closest_ancestor_in_main(commit_hash: str, main_branch: str) -> Optiona
         return None
 
 
-def file_exists_at_commit(commit_hash: str, url_path: str) -> bool:
-    """Check if a file exists at a specific commit."""
+def file_exists_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> bool:
+    """Check if a file exists at a specific commit in the specified repository."""
     try:
         result = subprocess.run(
-            ["git", "cat-file", "-e", f"{commit_hash}:{url_path}"],
-            capture_output=True,
-            check=True,
+            ["git", "-C", str(repo_path), "cat-file", "-e", f"{commit_hash}:{url_path}"],
+            capture_output=True,  # Don't need output, just return code
+            check=True,  # Errors if file doesn't exist at commit
         )
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
         stderr_output = e.stderr.strip() if e.stderr else "N/A"
         print(
-            f"Error: Checking if file '{url_path}' exists at commit '{commit_hash}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
+            f"Error: Checking if file '{url_path}' exists at commit '{commit_hash}' in repo '{repo_path}'. Command '{subprocess.list2cmdline(e.cmd)}' failed (rc={e.returncode}). Stderr: '{stderr_output}'",
             file=sys.stderr,
         )
         return False

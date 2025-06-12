@@ -44,6 +44,7 @@ class ResolutionState(TypedDict):
 
 class PermalinkFixerApp:
     repo_root: Path
+    effective_scan_path: Path
 
     def __init__(
         self,
@@ -53,21 +54,52 @@ class PermalinkFixerApp:
         self.global_prefs = global_prefs
         self.session_prefs = session_prefs
 
-        # Initialize repo and GitHub info first, as _load_ignored_paths might need them
-        self.repo_root = get_repo_root()
-        self.remote_url = get_remote_url()
+        # Determine repo_root and effective_scan_path
+        if self.global_prefs.scan_path:
+            user_scan_path_input = self.global_prefs.scan_path
+            # Resolve first to handle relative paths correctly
+            scan_path = user_scan_path_input.resolve()
+
+            if not scan_path.exists():
+                raise RuntimeError(f"Provided scan path '{self.global_prefs.scan_path}' does not exist.")
+
+            # Determine the directory from which to find the repo root
+            # If scan_path is a file, start search from its parent. If a dir, start from itself.
+            path_for_repo_discovery = scan_path.parent if scan_path.is_file() else scan_path
+
+            # This will raise RuntimeError if not in a git repo (or path_for_repo_discovery isn't in one),
+            # handled by main()
+            self.repo_root = get_repo_root(start_dir=path_for_repo_discovery)
+
+            # Sanity check: the scan_path must be within the discovered repo_root.
+            # This should generally be true if get_repo_root works correctly from path_for_repo_discovery.
+            try:
+                scan_path.relative_to(self.repo_root)
+            except ValueError as e:
+                # This case implies that scan_path.resolve() is outside the repo found from its own context.
+                raise RuntimeError(
+                    f"Resolved scan path '{scan_path}' is not inside the git repository root '{self.repo_root}' discovered from '{path_for_repo_discovery}'."
+                ) from e
+            self.effective_scan_path = scan_path
+        else:
+            # No scan_path provided, determine repo_root from CWD
+            self.repo_root = get_repo_root()  # Defaults to CWD
+            self.effective_scan_path = self.repo_root
+
+        self.remote_url = get_remote_url(repo_path=self.repo_root)
         self.git_owner, self.git_repo = get_github_info_from_url(self.remote_url)
 
         self.resolved_repl_cache: Dict[str, str] = {}
 
     def _print_initial_summary(self):
-        self._vprint(f"Repository: {self.repo_root}")
+        self._vprint(f"Repository root: {self.repo_root}")
+        self._vprint(f"Effective scan path: {self.effective_scan_path}")
         self._vprint(f"GitHub: {self.git_owner}/{self.git_repo}")
         self._vprint(f"Main branch: {self.global_prefs.main_branch}, Tag prefix: {self.global_prefs.tag_prefix}")
         self._vprint(f"Repo aliases: {self.global_prefs.repo_aliases if self.global_prefs.repo_aliases else 'None'}")
         self._vprint(
             f"Respect gitignore: {self.global_prefs.respect_gitignore}, "
-            f"Dry run: {self.global_prefs.dry_run}, Fetch mode: {self.session_prefs.fetch_mode}, "
+            f"Dry run: {self.global_prefs.dry_run}, "
             f"Fetch mode: {self.session_prefs.fetch_mode.value}, Auto accept replace: {self.session_prefs.auto_accept_replace}, Auto fallback: {self.session_prefs.auto_fallback}"
         )
         if self.global_prefs.output_json_report_path:
@@ -104,20 +136,30 @@ class PermalinkFixerApp:
 
         ignored_paths_set: Optional[Set[Path]] = None
         try:
-            ignored_paths_set = load_ignored_paths() if self.global_prefs.respect_gitignore else set()
+            ignored_paths_set = load_ignored_paths(self.repo_root) if self.global_prefs.respect_gitignore else set()
         except RuntimeError as e:
             self._vprint(
                 f"⚠️ Warning: Could not get git-ignored paths: {e}. Gitignore rules will not be applied effectively."
             )
 
-        self._vprint(f"Searching for GitHub permalinks in {self.repo_root}")
+        self._vprint(f"Searching for GitHub permalinks in {self.effective_scan_path}")
 
         global_found_count = 0
-        for file_path in self.repo_root.rglob("*"):
+
+        files_to_scan: List[Path] = []
+        if self.effective_scan_path.is_file():
+            files_to_scan.append(self.effective_scan_path)
+        elif self.effective_scan_path.is_dir():
+            files_to_scan.extend(self.effective_scan_path.rglob("*"))
+        else:
+            # This case should ideally be caught by the exists() check in __init__
+            # but as a safeguard:
+            print(f"Warning: Scan path {self.effective_scan_path} is neither a file nor a directory. No files to scan.")
+
+        for file_path in files_to_scan:
             # Determine if the file should be processed or skipped
             process_this_file = True
             log_as_skipped_due_to_gitignore = False
-
             # 1. Check if skipped by fundamental rules (directory, .git, non-text extension)
             #    Pass `None` for ignored_paths_from_git to check only fundamental rules.
             skipped_by_fundamental_rules = should_skip_file_search(file_path, self.repo_root, None)
@@ -237,7 +279,7 @@ class PermalinkFixerApp:
                 return True, parsed_ls, parsed_le  # Vacuously true, return line numbers from target URL if present
             return True, None, None  # Vacuously true for git targets
 
-        orig_lines = get_file_content_at_commit(original.commit_hash, original.url_path)
+        orig_lines = get_file_content_at_commit(original.commit_hash, original.url_path, repo_path=self.repo_root)
         if not orig_lines:
             return False, None, None  # Content not available
 
@@ -273,7 +315,7 @@ class PermalinkFixerApp:
                 )
                 return True, None, None  # Matches old behavior for non-GitHub URLs
         elif target_commit_hash and target_url_path:
-            repl_lines = get_file_content_at_commit(target_commit_hash, target_url_path)
+            repl_lines = get_file_content_at_commit(target_commit_hash, target_url_path, repo_path=self.repo_root)
         else:
             raise ValueError("Either target_url or (target_commit_hash and target_url_path) must be provided.")
 
@@ -449,7 +491,7 @@ class PermalinkFixerApp:
                 print(f"✅ Using tree-style link for ancestor: {repl_url}")
                 return "resolved", "", repl_url
             if current_url_path_for_ancestor and not file_exists_at_commit(
-                ancestor_commit, current_url_path_for_ancestor
+                ancestor_commit, current_url_path_for_ancestor, repo_path=self.repo_root
             ):
                 return (
                     "path_missing_ancestor",
@@ -881,7 +923,7 @@ class PermalinkFixerApp:
 
         # --- Stage 1: Resolve File Path/URL for Replacement ---
         if ancestor_commit:  # Only offer path/URL resolution if an ancestor context exists
-            if ancestor_info := get_commit_info(ancestor_commit):
+            if ancestor_info := get_commit_info(ancestor_commit, repo_path=self.repo_root):
                 self._vprint(f"⏪ Suggested ancestor commit: {ancestor_commit[:8]} - {ancestor_info['subject']}")
                 self._vprint(f"   👤 Author: {ancestor_info['author']} ({ancestor_info['date']})")
 
@@ -1130,7 +1172,7 @@ class PermalinkFixerApp:
 
         Return whether commit is available locally after checks and potential fetch.
         """
-        if not (commit_available := is_commit_available_locally(commit_hash)):
+        if not (commit_available := is_commit_available_locally(commit_hash, repo_path=self.repo_root)):
             print(f"  ❗ Commit {commit_hash} does not exist in this repository")
             should_attempt_fetch_this_commit = False
 
@@ -1142,8 +1184,8 @@ class PermalinkFixerApp:
             # If FetchMode.NEVER_FETCH, should_attempt_fetch_this_commit remains False
 
             if should_attempt_fetch_this_commit:
-                if fetch_commit_missing_locally(commit_hash, self._vprint):
-                    if not (commit_available := is_commit_available_locally(commit_hash)):
+                if fetch_commit_missing_locally(commit_hash, self._vprint, repo_path=self.repo_root):
+                    if not (commit_available := is_commit_available_locally(commit_hash, repo_path=self.repo_root)):
                         print(f"  ❌ Fetch for {commit_hash} seemed to succeed, but commit still not found.")
                 else:
                     # Fetch failed, commit still not available
@@ -1172,7 +1214,7 @@ class PermalinkFixerApp:
             print(f"  ❌ Commit {commit_hash} is not available. Skipping processing for this commit.")
             return None, []  # Skip if commit unavailable
 
-        if not (commit_info := get_commit_info(commit_hash)):
+        if not (commit_info := get_commit_info(commit_hash, repo_path=self.repo_root)):
             print(f"  ❌ Could not get info for commit {commit_hash}")
             return None, []
 
@@ -1181,13 +1223,15 @@ class PermalinkFixerApp:
         self._vprint(f"  🔗 Referenced in {len(commit_permalinks)} permalink(s)")
 
         # Check if the commit is already in the main branch
-        if is_commit_in_main(commit_hash, self.global_prefs.main_branch):
+        if is_commit_in_main(commit_hash, self.global_prefs.main_branch, repo_path=self.repo_root):
             print(f"  ✅ Already merged into {self.global_prefs.main_branch}. Permalinks to this commit are safe.")
             return None, []
 
         print(f"  ⛓️‍💥️ Not in {self.global_prefs.main_branch}")
-        if ancestor_commit := find_closest_ancestor_in_main(commit_hash, self.global_prefs.main_branch):
-            ancestor_info = get_commit_info(ancestor_commit)
+        if ancestor_commit := find_closest_ancestor_in_main(
+            commit_hash, self.global_prefs.main_branch, repo_path=self.repo_root
+        ):
+            ancestor_info = get_commit_info(ancestor_commit, repo_path=self.repo_root)
             print(
                 f"  ⏪ Closest ancestor in main: {ancestor_commit[:8]} - {ancestor_info['subject'] if ancestor_info else 'Unknown'}"
             )
@@ -1266,6 +1310,7 @@ class PermalinkFixerApp:
                 push_command = ["git", "push", "origin"] + tags_successfully_created_locally
                 subprocess.run(
                     push_command,
+                    cwd=self.repo_root,  # Ensure push happens in the correct repo
                     capture_output=True,
                     text=True,
                     check=True,
@@ -1317,13 +1362,13 @@ class PermalinkFixerApp:
                 "tag_message": tag_message,
             }
 
-            if git_tag_exists(tag_name):
+            if git_tag_exists(tag_name, repo_path=self.repo_root):
                 print(f"  ✅ Tag {tag_name} already exists for commit {commit_hash[:8]}")
                 report_entry_for_this_tag["status"] = "already_exists"
                 operation_set.report_data["tags_created"].append(report_entry_for_this_tag)
                 continue
 
-            if create_git_tag(tag_name, commit_hash, tag_message, self.global_prefs.dry_run):
+            if create_git_tag(tag_name, commit_hash, tag_message, self.global_prefs.dry_run, repo_path=self.repo_root):
                 # Message already printed by execute_git_tag_creation
                 report_entry_for_this_tag["status"] = "created"
                 if self.global_prefs.dry_run:
@@ -1432,7 +1477,7 @@ class PermalinkFixerApp:
 
         examination_set = self._discover_phase()
         if not examination_set.commits_to_examine:
-            print("No GitHub permalinks found in this repository.")
+            print("No GitHub permalinks at this path.")
             if self.global_prefs.output_json_report_path:
                 OperationSet().write_json_report(self.global_prefs.output_json_report_path)
             return

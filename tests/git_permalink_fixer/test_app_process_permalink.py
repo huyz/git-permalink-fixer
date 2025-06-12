@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from pathlib import Path
+from pathlib import Path, PosixPath
 
 from git_permalink_fixer.app import PermalinkFixerApp
 from git_permalink_fixer.global_prefs import GlobalPreferences
@@ -64,7 +64,7 @@ def test_process_permalink_with_ancestor_and_path_resolves(
     mock_app_for_process_permalink._prompt_user_for_action.assert_called_once_with(
         original_permalink, expected_repl_url, False, auto_action_directive_for_commit=None
     )
-    mock_get_commit_info.assert_called_once_with(ancestor_commit)
+    mock_get_commit_info.assert_called_once_with(ancestor_commit, repo_path=PosixPath("/fake/repo"))
 
 
 @patch("git_permalink_fixer.app.get_commit_info")

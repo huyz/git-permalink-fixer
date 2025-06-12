@@ -1,5 +1,6 @@
 import argparse
 import sys
+from pathlib import Path
 
 from .global_prefs import GlobalPreferences
 from .session_prefs import SessionPreferences, FetchMode
@@ -12,6 +13,14 @@ def main():
         description="Finds GitHub commit permalinks, checks their status relative to the main branch, and assists"
         " in preserving or updating them.",
         formatter_class=argparse.RawTextHelpFormatter,  # Allows for better formatting of help
+    )
+    parser.add_argument(
+        "scan_path",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="Optional path to a directory or file to scan. If not provided, scans from the repository root.\n"
+        "The path must be within the git repository.",
     )
     parser.add_argument(
         "-v",

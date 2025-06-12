@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support path as command-line argument
 - Setup `pre-commit` with `black`, `ruff`, `pylint`, and `mypy` for consistent code style and quality.
 
 ## [v0.1.0] - 2025-06-11

@@ -1,0 +1,92 @@
+---
+name: Run Linting
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+        - main
+  pull_request:
+  schedule:
+    - cron: "10 10 * * SUN"
+
+
+env:
+  PY_COLORS: '1'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      # TODO: is there an easier way to do this?
+      - name: Determine if we apply to all files
+        if: contains(fromJSON('["schedule", "workflow_dispatch"]'), github.event_name)
+        run: echo "changed_all=true" >> "$GITHUB_ENV"
+
+      - name: Checkout code, including .github/paths-filter.yml
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.x
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9.18'   # avoid warning in logs
+
+      - name: Install the latest version of rye
+        uses: eifinger/setup-rye@v4
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: rye sync
+
+      - name: Check for changes in relevant files
+        id: changes
+        if: env.changed_all != 'true'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: .github/paths-filter.yml
+
+      - name: Set up pre-commit
+        if: env.changed_all == 'true' || steps.changes.outputs.all == 'true'
+        # TODO: how do we make the version of pre-commit match pyproject.toml
+        run: |
+          pip install pre-commit
+          pre-commit install --install-hooks
+
+      - name: Get listing of changed GitHub Action files
+        id: action-files
+        if: env.changed_all != 'true' && steps.changes.outputs.github_actions == 'true'
+        uses: dorny/paths-filter@v3
+        with:
+          # Enable listing of files matching each filter.
+          # Paths to files will be available in `${FILTER_NAME}_files` output variable.
+          # Paths will be escaped and space-delimited.
+          # Output is usable as command line argument list in linux shell
+          list-files: shell
+          # Skip linting deleted files
+          # TODO: how do avoid the redundancy with paths-filter.yml?
+          filters: |
+            all:
+              - added|modified: '.github/paths-filter.yml'
+              - added|modified: '.github/workflows/**'
+
+      - name: Run actionlint on all GitHub Action files
+        if: env.changed_all == 'true'
+        run: |
+          pre-commit run actionlint --all-files
+
+      - name: Run actionlint on changed GitHub Action files
+        if: env.changed_all != 'true' && steps.changes.outputs.github_actions == 'true'
+        run: |
+          # Run pre-commit to lint and format check files that were changed (but not deleted) compared to main.
+          # XXX: there is a very small chance that it'll expand to exceed Linux's limits
+          #      `getconf ARG_MAX` - max # bytes of args + environ for exec()
+          pre-commit run actionlint --files ${{ steps.action-files.outputs.all_files }}

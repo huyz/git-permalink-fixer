@@ -1,0 +1,45 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# Bandit is a security linter designed to find common security issues in Python code.
+# This action will run Bandit on your codebase.
+# The results of the scan will be found under the Security tab of your repository.
+
+# https://github.com/marketplace/actions/bandit-by-pycqa
+# https://pypi.org/project/bandit/ is Apache v2.0 licensed, by PyCQA
+
+name: Bandit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "main" ]
+  schedule:
+    - cron: '33 13 * * 1'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      # required for all workflows
+      security-events: write
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+    steps:
+      - name: Perform Bandit Analysis
+        uses: PyCQA/bandit-action@v1
+        with:
+          # Exclude directories that are not relevant for this repository
+          # or that are too noisy.
+          # For example, we might want to exclude directories related to tests,
+          # documentation, or other non-production code.
+          # NOTE: `tests` doesn't work. See https://github.com/PyCQA/bandit-action/issues/14
+          exclude: ./tests
+          # B607: Starting a process with a partial executable path
+          skips: "B607,B404"

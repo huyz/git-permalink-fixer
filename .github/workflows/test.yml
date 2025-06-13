@@ -1,6 +1,17 @@
 name: Run Tests
 
-on: [push, pull_request]
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "20 10 * * SUN"
 
 jobs:
   test:
@@ -10,29 +21,33 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Depth of 2 suggested by codecov.io
+          fetch-depth: 2
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install the latest version of rye
-      uses: eifinger/setup-rye@v4
-      with:
-        enable-cache: true
+      - name: Install the latest version of rye
+        uses: eifinger/setup-rye@v4
+        with:
+          enable-cache: true
 
-    - name: Sync dependencies
-      run: rye sync
+      - name: Sync dependencies
+        run: rye sync
 
-    - name: Lint
-      run: rye lint
+      - name: Lint
+        run: rye lint
 
-    - name: Pylint
-      run: rye run pylint src
+      - name: Pylint
+        run: rye run pylint src
 
-    - name: MyPy
-      run: rye run mypy src
+      - name: MyPy
+        run: rye run mypy src
 
-    - name: Test with pytest
-      run: rye run pytest
+      - name: Test with pytest
+        run: rye run pytest

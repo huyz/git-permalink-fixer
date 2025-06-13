@@ -43,23 +43,14 @@ Supports GitHub permalinks of the form:
 - **Dry-run mode**: See what changes would be made without modifying files.
 - **JSON report**: Outputs a JSON report of changes made (or in dry-run mode, would make)
 
-## Installation
-
-Requires Python 3.9 or later.
-
-To install from [PyPI](https://pypi.org/project/git-permalink-fixer/):
-
-```bash
-pipx install git-permalink-fixer
-```
-
 ## Usage
 
-Navigate to your Git repository's root directory and run:
+To run directly from [PyPI](https://pypi.org/project/git-permalink-fixer/):
 
 ```bash
-cd $REPO_ROOT
-git-permalink-fixer [path]
+ux git-permalink-fixer [path]
+# or
+pipx run git-permalink-fixer [path]
 ```
 
 ### Options
@@ -132,6 +123,5 @@ You can set the following environment variable to authenticate:
 For example, to generate a JSON report of suggested permalink replacements without making any changes:
 
 ```bash
-cd $REPO_ROOT
-git-permalink-fixer --dry-run --non-interactive --output-json-report $(date -I).permalinks-to-replace.json --line-shift-tolerance '10%'
+uvx git-permalink-fixer --dry-run --non-interactive --output-json-report $(date -I).permalinks-to-replace.json --line-shift-tolerance '10%' $REPO_PATH
 ```

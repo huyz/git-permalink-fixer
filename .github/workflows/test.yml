@@ -1,6 +1,17 @@
 name: Run Tests
 
-on: [push, pull_request]
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "20 10 * * SUN"
 
 jobs:
   test:

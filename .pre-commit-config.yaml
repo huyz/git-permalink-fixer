@@ -5,33 +5,53 @@ repos:
       - id: check-added-large-files
       - id: check-ast
       - id: check-case-conflict
+      - id: check-docstring-first
       - id: check-executables-have-shebangs
       - id: check-json
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
       - id: check-symlinks
       - id: check-toml
-      #- id: check-vcs-permalinks  # Run this only manually
+      #- id: check-vcs-permalinks  # 2025-06-13 Our tests are full of permalinks
       - id: check-yaml
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-aws-credentials
         args: [--allow-missing-credentials]
       - id: detect-private-key
+      #- id: double-quote-string-fixer  # WARNING: Conflicts with `ruff format`
       - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: forbid-new-submodules
       - id: mixed-line-ending
       - id: name-tests-test
         args: [--pytest-test-first]
       #- id: pretty-format-json
       #  args: [--no-ensure-ascii, --no-sort-keys]
+      - id: requirements-txt-fixer
       - id: trailing-whitespace
+
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.13
     hooks:
       - id: ruff-check
-        args: [--fix, --line-length=120]
+        args: [--fix]
       - id: ruff-format
-        args: [--line-length=120]
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.10.0
+    hooks:
+      - id: shellcheck
+        #args: ["--severity=warning"]  # Optionally only show errors and warnings
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
 
 exclude: ^.idea/
+
+ci:
+  # 2025-06-13 Shellcheck gives: Executable `docker` not found
+  skip: [shellcheck]

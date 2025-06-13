@@ -1,8 +1,20 @@
 # Git Permalink Fixer
 
-[![PyPI version](https://badge.fury.io/py/git-permalink-fixer.svg)](https://badge.fury.io/py/git-permalink-fixer)
-[![Build Status](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/git-permalink-fixer.svg?1)](https://badge.fury.io/py/git-permalink-fixer)
+
+[![Publish to PyPI](https://github.com/huyz/git-permalink-fixer/actions/workflows/publish.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/publish.yml)
+[![Run Tests](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml)
+[![Lint](https://github.com/huyz/git-permalink-fixer/actions/workflows/lint.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/lint.yml)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/huyz/git-permalink-fixer/main.svg)](https://results.pre-commit.ci/latest/github/huyz/git-permalink-fixer/main)
+
+[![Bandit](https://github.com/huyz/git-permalink-fixer/actions/workflows/bandit.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/bandit.yml)
+[![CodeQL](https://github.com/huyz/git-permalink-fixer/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/github-code-scanning/codeql)
+[![DevSkim](https://github.com/huyz/git-permalink-fixer/actions/workflows/devskim.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/devskim.yml)
+[![Snyk Python](https://github.com/huyz/git-permalink-fixer/actions/workflows/snyk-python.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/snyk-python.yml)
+[![SonarCloud](https://github.com/huyz/git-permalink-fixer/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/sonarcloud.yml)
+[![Dependency Review](https://github.com/huyz/git-permalink-fixer/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/dependency-review.yml)
+[![Dependabot Updates](https://github.com/huyz/git-permalink-fixer/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/dependabot/dependabot-updates)
 
 `git-permalink-fixer` is a command-line tool that scans your project files for GitHub permalinks (referencing commit
 SHAs) and helps you update them to more resilient references (e.g., permalinks referencing tags or the latest commit on

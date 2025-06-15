@@ -49,5 +49,18 @@ jobs:
       - name: MyPy
         run: rye run mypy src
 
-      - name: Test with pytest
-        run: rye run pytest
+      - name: Test with pytest, generating a coverage report and test analytics (for codecov.io)
+        # coverage: pytest --cov --cov-branch --cov-report=xml
+        # testa analytics: pytest --cov --junitxml=junit.xml -o junit_family=legacy
+        run: rye run pytest --cov --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

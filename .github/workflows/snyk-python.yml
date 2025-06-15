@@ -47,8 +47,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Depth of 2 suggested by codecov.io
-          fetch-depth: 2
+          fetch-depth: 1
 
       - name: Run Snyk to check configuration files for security issues
         uses: snyk/actions/python@master

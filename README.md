@@ -5,6 +5,7 @@
 
 [![Publish to PyPI](https://github.com/huyz/git-permalink-fixer/actions/workflows/publish.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/publish.yml)
 [![Run Tests](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/test.yml)
+[![codecov](https://img.shields.io/codecov/c/github/huyz/git-permalink-fixer?2)](https://codecov.io/gh/huyz/git-permalink-fixer)
 [![Lint](https://github.com/huyz/git-permalink-fixer/actions/workflows/lint.yml/badge.svg)](https://github.com/huyz/git-permalink-fixer/actions/workflows/lint.yml)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/huyz/git-permalink-fixer/main.svg)](https://results.pre-commit.ci/latest/github/huyz/git-permalink-fixer/main)
 

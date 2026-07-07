@@ -62,7 +62,7 @@ jobs:
         if: env.changed_all == 'true' || steps.changes.outputs.all == 'true'
         # TODO: how do we make the version of pre-commit match pyproject.toml
         run: |
-          pip install pre-commit
+          pip install --only-binary :all: pre-commit==4.6.0
           pre-commit install --install-hooks
 
       - name: Get listing of changed GitHub Action files

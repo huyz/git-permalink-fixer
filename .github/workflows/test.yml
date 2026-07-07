@@ -38,7 +38,11 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --frozen --no-build --group dev
+        # --no-build to avoid security alerts
+        # --no-install-project so that we don't attempt to build the project, which would fail
+        #   because of --no-build. And we don't need the project anyway cause we just need
+        #   dev dependencies (tools) for linting.
+        run: uv sync --frozen --no-build --no-install-project --group dev
 
       - name: Ruff
         run: uv run ruff check .

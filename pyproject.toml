@@ -13,7 +13,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -24,9 +23,9 @@ classifiers = [
     "Environment :: Console",
     "Operating System :: OS Independent",
 ]
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 dependencies = [
-    "requests>=2.33.0",  # For checking referenced lines in permalinks
+    "requests>=2.34.2",  # For checking referenced lines in permalinks
 ]
 
 [project.scripts]
@@ -63,7 +62,7 @@ packages = ["src/git_permalink_fixer"]
 dev = [
     "pytest>=8.4.0",
     "pytest-mock>=3.14.1",
-    "types-requests>=2.32.0.20250602",
+    "types-requests>=2.33.0.20260518",
     "pytest-cov>=6.1.1",
     "mypy>=1.16.0",
     "pylint>=3.3.7",

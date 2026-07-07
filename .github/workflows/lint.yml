@@ -37,7 +37,7 @@ jobs:
         id: setup-python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9.18'   # avoid warning in logs
+          python-version: '3.10.9'   # avoid warning in logs
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3

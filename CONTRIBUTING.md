@@ -16,7 +16,7 @@ First off, thank you for considering contributing to Git Permalink Fixer! Your h
 1.  Fork the repo and create your branch from `main` (or the primary development branch).
 2.  If you've added code that should be tested, add tests.
 3.  Ensure the test suite passes (`pytest`).
-4.  Make sure your code lints (e.g., using `rye lint`, `ruff`, or `pylint` + `black`).
+4.  Make sure your code lints (e.g., using `uv run ruff check .`, or `pylint` + `ruff format --check`).
 5.  Issue that pull request!
 
 ## Styleguides

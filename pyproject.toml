@@ -59,19 +59,16 @@ include = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/git_permalink_fixer"]
 
-[tool.rye]
-managed = true
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.4.0",
     "pytest-mock>=3.14.1",
     "types-requests>=2.32.0.20250602",
-    # pytest needs setuptools and rye doesn't install it by default
-    "setuptools>=80.9.0",
     "pytest-cov>=6.1.1",
     "mypy>=1.16.0",
     "pylint>=3.3.7",
+    "ruff>=0.6.0",
 ]
-line-length = 120  # Default is 88
 
 [tool.black]
 line-length = 120  # Default is 88

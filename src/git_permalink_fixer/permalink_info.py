@@ -1,20 +1,19 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Tuple
 
 
 @dataclass
 class PermalinkInfo:
     url: str
     commit_hash: str
-    url_path: Optional[str]
-    line_start: Optional[int]
-    line_end: Optional[int]
+    url_path: str | None
+    line_start: int | None
+    line_end: int | None
     found_in_file: Path
     found_at_line: int
 
     @staticmethod
-    def count_unique_commits_and_files(permalinks: List["PermalinkInfo"]) -> Tuple[int, int]:
+    def count_unique_commits_and_files(permalinks: list["PermalinkInfo"]) -> tuple[int, int]:
         """Helper to count unique commit hashes and unique files from a list of permalinks."""
         unique_commits = set()
         unique_files = set()

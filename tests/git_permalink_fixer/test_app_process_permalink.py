@@ -1,10 +1,12 @@
-import pytest
-from unittest.mock import MagicMock, patch
 from pathlib import Path, PosixPath
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from git_permalink_fixer.app import PermalinkFixerApp
 from git_permalink_fixer.global_prefs import GlobalPreferences
-from git_permalink_fixer.session_prefs import SessionPreferences, FetchMode
+from git_permalink_fixer.session_prefs import FetchMode, SessionPreferences
+
 from .conftest import create_mock_permalink_info
 
 

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from git_permalink_fixer.app import ResolutionState
+
 from .conftest import create_mock_permalink_info
 
 

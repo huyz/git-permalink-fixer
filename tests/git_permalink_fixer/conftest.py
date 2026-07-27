@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from git_permalink_fixer import GlobalPreferences, SessionPreferences, PermalinkFixerApp
+from git_permalink_fixer import GlobalPreferences, PermalinkFixerApp, SessionPreferences
 from git_permalink_fixer.permalink_info import PermalinkInfo
 
 

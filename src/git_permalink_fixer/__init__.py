@@ -1,11 +1,11 @@
 import argparse
-import sys
 import importlib.metadata
+import sys
 from pathlib import Path
 
-from .global_prefs import GlobalPreferences
-from .session_prefs import SessionPreferences, FetchMode
 from .app import PermalinkFixerApp
+from .global_prefs import GlobalPreferences
+from .session_prefs import FetchMode, SessionPreferences
 
 
 def main():

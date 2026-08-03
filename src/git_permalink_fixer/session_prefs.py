@@ -1,6 +1,5 @@
 import argparse
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
 
 
@@ -16,9 +15,9 @@ class SessionPreferences:
 
     fetch_mode: FetchMode = FetchMode.PROMPT
     auto_accept_replace: bool = False
-    auto_fallback: Optional[str] = None  # "tag" or "skip"
-    remembered_action_with_repl: Optional[str] = None
-    remembered_action_without_repl: Optional[str] = None
+    auto_fallback: str | None = None  # "tag" or "skip"
+    remembered_action_with_repl: str | None = None
+    remembered_action_without_repl: str | None = None
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> "SessionPreferences":

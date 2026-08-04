@@ -1,13 +1,13 @@
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Set, Tuple, Callable
+from typing import List, Dict, Set, Tuple, Callable
 import re
 import sys
 
 from .constants import GITHUB_REMOTE_RE
 
 
-def get_repo_root(start_dir: Optional[Path] = None) -> Path:
+def get_repo_root(start_dir: Path | None = None) -> Path:
     """Returns the repo's root in the filesystem.
     If start_dir is provided, 'git rev-parse --show-toplevel' is run
     as if executed from that directory. Otherwise, it uses the current working directory.
@@ -144,7 +144,7 @@ def is_commit_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> bo
         return False
 
 
-def get_file_content_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> Optional[List[str]]:
+def get_file_content_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> List[str] | None:
     """Get file content at a specific commit from the specified repository."""
     try:
         result = subprocess.run(
@@ -287,7 +287,7 @@ def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable, repo_p
         return False
 
 
-def get_commit_info(commit_hash: str, repo_path: Path) -> Optional[Dict[str, str]]:
+def get_commit_info(commit_hash: str, repo_path: Path) -> Dict[str, str] | None:
     """Get commit information from the specified repository."""
     try:
         result = subprocess.run(
@@ -329,7 +329,7 @@ def get_commit_info(commit_hash: str, repo_path: Path) -> Optional[Dict[str, str
         return None
 
 
-def find_closest_ancestor_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> Optional[str]:
+def find_closest_ancestor_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> str | None:
     """Find the closest ancestor commit that is in the main branch in the specified repository."""
     try:
         result = subprocess.run(

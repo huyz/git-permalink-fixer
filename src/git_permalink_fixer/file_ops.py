@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple, Set, Optional, Callable
+from typing import List, Tuple, Set, Callable
 import re
 import logging
 from .permalink_info import PermalinkInfo
@@ -15,7 +15,7 @@ from .url_utils import parse_github_permalink_for_this_repo
 logger = logging.getLogger(__name__)
 
 
-def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: Optional[Set[Path]] = None) -> bool:
+def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: Set[Path] | None = None) -> bool:
     """Helper to determine if a file should be skipped during permalink search.
 
     Note that calling `file` would be too slow, so we use a heuristic.
@@ -58,7 +58,7 @@ def extract_permalinks_from_file(
     git_owner: str,
     git_repo: str,
     current_global_found_count: int,
-    normalize_repo_name_func: Optional[Callable] = None,
+    normalize_repo_name_func: Callable | None = None,
 ) -> Tuple[List[PermalinkInfo], int]:
     """Helper to extract permalinks from the lines of a single file.
     Returns (permalinks_in_file, new_global_found_count)

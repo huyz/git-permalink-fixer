@@ -2,7 +2,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, TypedDict
+from typing import Dict, List, Set, Tuple, TypedDict
 
 from .examination_set import ExaminationSet
 from .file_ops import extract_permalinks_from_file, should_skip_file_search
@@ -35,11 +35,11 @@ from .git_utils import is_commit_available_locally, fetch_commit_missing_locally
 
 class ResolutionState(TypedDict):
     current_is_external: bool
-    current_external_url_base: Optional[str]
-    current_url_path_for_ancestor: Optional[str]
-    current_ls: Optional[int]
-    current_le: Optional[int]
-    custom_tolerance_str: Optional[str]
+    current_external_url_base: str | None
+    current_url_path_for_ancestor: str | None
+    current_ls: int | None
+    current_le: int | None
+    custom_tolerance_str: str | None
 
 
 class PermalinkFixerApp:
@@ -134,7 +134,7 @@ class PermalinkFixerApp:
         """Find all GitHub commit permalinks in the repository."""
         examination_set = ExaminationSet()
 
-        ignored_paths_set: Optional[Set[Path]] = None
+        ignored_paths_set: Set[Path] | None = None
         try:
             ignored_paths_set = load_ignored_paths(self.repo_root) if self.global_prefs.respect_gitignore else set()
         except RuntimeError as e:
@@ -232,7 +232,7 @@ class PermalinkFixerApp:
         original_permalink_info: PermalinkInfo,
         original_content_snippet: List[str],
         target_description: str,  # e.g., "ancestor commit X:path/to/file" or "URL Y"
-        sample_target_content: Optional[List[str]],
+        sample_target_content: List[str] | None,
         line_shift_tolerance: int,
     ):
         """Helper to log detailed mismatch information if verbose."""
@@ -256,11 +256,11 @@ class PermalinkFixerApp:
     def _verify_content_match(
         self,
         original: PermalinkInfo,  # Defines original content source (commit, path, lines)
-        target_commit_hash: Optional[str] = None,
-        target_url_path: Optional[str] = None,
-        target_url: Optional[str] = None,
-        custom_tolerance_str: Optional[str] = None,  # Optional custom tolerance string (e.g., "5" or "10%")
-    ) -> Tuple[bool, Optional[int], Optional[int]]:
+        target_commit_hash: str | None = None,
+        target_url_path: str | None = None,
+        target_url: str | None = None,
+        custom_tolerance_str: str | None = None,  # Optional custom tolerance string (e.g., "5" or "10%")
+    ) -> Tuple[bool, int | None, int] | None:
         """
         Verifies if the content from the original permalink's specified lines exists in the target,
         allowing for line shifts. The target can be specified by a commit hash and file path,
@@ -300,8 +300,8 @@ class PermalinkFixerApp:
             return False, None, None
 
         # 2. Get target lines (repl_lines)
-        repl_lines: Optional[List[str]]
-        repl_ls: Optional[int] = None
+        repl_lines: List[str] | None
+        repl_ls: int | None = None
         if target_url:
             target_gh_info = parse_github_blob_permalink(target_url)
             if target_gh_info:  # It's a GitHub URL
@@ -341,7 +341,7 @@ class PermalinkFixerApp:
 
         # 4. Perform matching logic with shifts
         try:
-            sample_target_content: Optional[List[str]] = None  # To display content mismatches
+            sample_target_content: List[str] | None = None  # To display content mismatches
             # Try all shifts from 0 outward, alternating `+shift` and `-shift`
             for offset in range(0, eff_tolerance + 1):
                 for shift in (offset, -offset) if offset != 0 else (0,):
@@ -383,9 +383,9 @@ class PermalinkFixerApp:
         self,
         original: PermalinkInfo,
         repl_commit: str,
-        repl_url_path: Optional[str],
-        repl_ls: Optional[int] = None,
-        repl_le: Optional[int] = None,
+        repl_url_path: str | None,
+        repl_ls: int | None = None,
+        repl_le: int | None = None,
     ) -> str:
         """Creates a replacement permalink string."""
         match = re.search(r"github\.com/([^/]+)/([^/]+)/(blob|tree)/", original.url)
@@ -407,9 +407,9 @@ class PermalinkFixerApp:
     def _construct_url_from_current_state(
         self,
         original: PermalinkInfo,
-        ancestor_commit: Optional[str],
+        ancestor_commit: str | None,
         state: ResolutionState,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Constructs a URL string based on the current resolution state for the 'keep' option."""
         if state["current_is_external"] and state["current_external_url_base"]:
             return update_github_url_with_line_numbers(
@@ -430,9 +430,9 @@ class PermalinkFixerApp:
     def _evaluate_current_resolution_candidate(
         self,
         original: PermalinkInfo,
-        ancestor_commit: Optional[str],
+        ancestor_commit: str | None,
         state: ResolutionState,
-    ) -> Tuple[str, str, Optional[str]]:
+    ) -> Tuple[str, str, str] | None:
         """
         Evaluates the current candidate for permalink replacement.
         Returns: (status_code, problem_description, proposed_final_url_or_none)
@@ -540,7 +540,7 @@ class PermalinkFixerApp:
         return "error", "Cannot determine replacement target. No ancestor and no external URL mode.", None
 
     def _resolution_menu_handle_set_url(
-        self, ancestor_commit: Optional[str], state: ResolutionState
+        self, ancestor_commit: str | None, state: ResolutionState
     ) -> Tuple[str, ResolutionState]:
         """Handles the 'u' menu choice for setting a new full URL."""
         new_url_input = input("    Enter new full URL: ").strip()
@@ -613,7 +613,7 @@ class PermalinkFixerApp:
         return "state_updated_continue", state
 
     def _process_resolution_menu_choice(
-        self, menu_choice: str, original: PermalinkInfo, ancestor_commit: Optional[str], state: ResolutionState
+        self, menu_choice: str, original: PermalinkInfo, ancestor_commit: str | None, state: ResolutionState
     ) -> Tuple[str, ResolutionState]:
         """
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
@@ -672,8 +672,8 @@ class PermalinkFixerApp:
     def _resolve_replacement_interactively(
         self,
         original: PermalinkInfo,
-        ancestor_commit: Optional[str],
-    ) -> Tuple[Optional[str], bool]:
+        ancestor_commit: str | None,
+    ) -> Tuple[str | None, bool]:
         """
         Interactively resolves a permalink replacement, handling missing paths and line mismatches.
         Returns (repl_url, aborted)
@@ -681,7 +681,7 @@ class PermalinkFixerApp:
 
         def display_resolution_menu(
             current_problem: str,
-            current_url_path_for_ancestor: Optional[str],
+            current_url_path_for_ancestor: str | None,
             original_has_lines: bool,
         ) -> None:
             """Displays the interactive resolution menu."""
@@ -759,10 +759,10 @@ class PermalinkFixerApp:
     def _prompt_user_for_action(
         self,
         original: PermalinkInfo,
-        repl_url: Optional[str],  # The fully formed candidate replacement URL
+        repl_url: str | None,  # The fully formed candidate replacement URL
         is_commit_slated_for_tagging: bool,
-        auto_action_directive_for_commit: Optional[str] = None,  # From 'rc' or 'sc'
-    ) -> tuple[str, Optional[str]]:
+        auto_action_directive_for_commit: str | None = None,  # From 'rc' or 'sc'
+    ) -> tuple[str, str] | None:
         """
         Prompts the user for the action (replace, tag, skip) for a permalink and handles remembering
         choices.
@@ -772,7 +772,7 @@ class PermalinkFixerApp:
 
         ### First, determine remembered action based on current context
 
-        auto_chosen_action: Optional[str] = None
+        auto_chosen_action: str | None = None
 
         # Priority 1: Commit-level auto directive (from 'rc' or 'sc' for this commit group)
         if repl_url and auto_action_directive_for_commit == "replace":
@@ -850,8 +850,8 @@ class PermalinkFixerApp:
         print("    sa) Automatically fall back to skipping for All commits from now on")
 
         while True:
-            action: Optional[str] = None
-            remember_this_choice: Optional[str] = None
+            action: str | None = None
+            remember_this_choice: str | None = None
 
             prompt_options_list = ["o"]
             if repl_url:
@@ -895,12 +895,12 @@ class PermalinkFixerApp:
     def _process_permalink(
         self,
         original: PermalinkInfo,
-        ancestor_commit: Optional[str],  # For context, even if user provides external URL
+        ancestor_commit: str | None,  # For context, even if user provides external URL
         index: int,
         total: int,
         is_commit_slated_for_tagging: bool,
-        auto_action_directive_for_commit: Optional[str] = None,  # "replace" or "skip"
-    ) -> Tuple[str, Optional[str]]:  # Returns (action_str, final_repl_url_if_action_is_replace)
+        auto_action_directive_for_commit: str | None = None,  # "replace" or "skip"
+    ) -> Tuple[str, str] | None:  # Returns (action_str, final_repl_url_if_action_is_replace)
         """
         Process a permalink (for a given file, for a given commit), including verifying content match,
         prompting for replacement, and handling user actions.
@@ -919,7 +919,7 @@ class PermalinkFixerApp:
             print(f"🏷️ Commit {original.commit_hash[:8]} is currently slated to be TAGGED.")
         print()
 
-        repl_url: Optional[str] = None  # A fully formed URL if user provides one
+        repl_url: str | None = None  # A fully formed URL if user provides one
 
         # --- Stage 1: Resolve File Path/URL for Replacement ---
         if ancestor_commit:  # Only offer path/URL resolution if an ancestor context exists
@@ -980,15 +980,15 @@ class PermalinkFixerApp:
         commit_hash: str,
         commit_permalinks: List[PermalinkInfo],
         commit_info: Dict[str, str],
-        ancestor_commit: Optional[str],
-    ) -> Tuple[Optional[Tuple[str, Dict[str, str]]], List[Tuple[PermalinkInfo, str]]]:
+        ancestor_commit: str | None,
+    ) -> Tuple[Tuple[str, Dict[str, str]] | None, List[Tuple[PermalinkInfo, str]]]:
         """
         Handles interactive prompting for each permalink within a commit group.
         Returns an optional tag to create and a list of replacements to make.
         """
         pending_repls: List[Tuple[PermalinkInfo, str]] = []
-        pending_tag: Optional[Tuple[str, Dict[str, str]]] = None
-        auto_action_directive_for_rest_in_commit: Optional[str] = None  # "replace" or "skip"
+        pending_tag: Tuple[str, Dict[str, str]] | None = None
+        auto_action_directive_for_rest_in_commit: str | None = None  # "replace" or "skip"
 
         ### First, determine if commit is slated for tagging based on remembered choices
 
@@ -1197,7 +1197,7 @@ class PermalinkFixerApp:
 
     def _process_commit(
         self, commit_hash: str, commit_permalinks: List[PermalinkInfo], index: int, total: int
-    ) -> Tuple[Optional[Tuple[str, Dict[str, str]]], List[Tuple[PermalinkInfo, str]]]:
+    ) -> Tuple[Tuple[str, Dict[str, str]] | None, List[Tuple[PermalinkInfo, str]]]:
         """
         Processes a single commit hash and all its associated permalinks for the Examination phase.
         Determines if auto-actions apply or if interactive prompting is needed.

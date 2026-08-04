@@ -1,5 +1,5 @@
 import pytest
-from typing import Optional, Tuple
+from typing import Tuple
 from pathlib import Path
 
 from git_permalink_fixer.url_utils import (
@@ -69,7 +69,7 @@ from git_permalink_fixer.permalink_info import PermalinkInfo
 )
 def test_parse_github_blob_permalink(
     url: str,
-    expected_output: Optional[Tuple[str, str, str, str, Optional[int], Optional[int]]],
+    expected_output: Tuple[str, str, str, str, int | None, int] | None,
 ):
     """Tests parse_github_blob_permalink with various inputs."""
     assert parse_github_blob_permalink(url) == expected_output
@@ -222,7 +222,7 @@ def normalize_repo_name_dummy(repo_name: str) -> str:
     ],
 )
 def test_parse_github_permalink_for_this_repo(
-    url: str, git_owner: str, git_repo: str, normalize_func, expected_output: Optional[PermalinkInfo]
+    url: str, git_owner: str, git_repo: str, normalize_func, expected_output: PermalinkInfo | None
 ):
     """Tests parse_github_permalink_for_this_repo with various inputs."""
     assert parse_github_permalink_for_this_repo(url, git_owner, git_repo, normalize_func) == expected_output
@@ -289,7 +289,7 @@ def test_parse_github_permalink_for_this_repo(
     ],
 )
 def test_update_github_url_with_line_numbers(
-    base_url: str, line_start: Optional[int], line_end: Optional[int], expected_url: str
+    base_url: str, line_start: int | None, line_end: int | None, expected_url: str
 ):
     """Tests update_github_url_with_line_numbers."""
     assert update_github_url_with_line_numbers(base_url, line_start, line_end) == expected_url

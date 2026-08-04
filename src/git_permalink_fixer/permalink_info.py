@@ -1,15 +1,15 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import List, Tuple
 
 
 @dataclass
 class PermalinkInfo:
     url: str
     commit_hash: str
-    url_path: Optional[str]
-    line_start: Optional[int]
-    line_end: Optional[int]
+    url_path: str | None
+    line_start: int | None
+    line_end: int | None
     found_in_file: Path
     found_at_line: int
 

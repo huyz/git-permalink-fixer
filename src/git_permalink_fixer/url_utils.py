@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple, Callable
+from typing import Tuple, Callable
 
 from .constants import GITHUB_PERMALINK_RE
 from .permalink_info import PermalinkInfo
 
 
-def parse_github_blob_permalink(url: str) -> Optional[Tuple[str, str, str, str, Optional[int], Optional[int]]]:
+def parse_github_blob_permalink(url: str) -> Tuple[str, str, str, str, int | None, int | None] | None:
     """
     Parses any GitHub file URL (blob view) to extract owner, repo, ref (commit/branch),
     path, and line numbers.
@@ -28,8 +28,8 @@ def parse_github_permalink_for_this_repo(
     url: str,
     git_owner: str,
     git_repo: str,
-    normalize_repo_name_func: Optional[Callable] = None,
-) -> Optional[PermalinkInfo]:
+    normalize_repo_name_func: Callable | None = None,
+) -> PermalinkInfo | None:
     """Parse a GitHub permalink URL to extract commit hash, file path, and line numbers.
     Note in this case that for the ref, we only accept commit hashes, not branches or tags.
     Returns None if the URL does not match the expected format or is not from the current repository.
@@ -68,9 +68,7 @@ def parse_github_permalink_for_this_repo(
     )
 
 
-def update_github_url_with_line_numbers(
-    base_url: Optional[str], line_start: Optional[int], line_end: Optional[int]
-) -> str:
+def update_github_url_with_line_numbers(base_url: str | None, line_start: int | None, line_end: int | None) -> str:
     """Updates a given URL with new line number fragments, removing old ones."""
     if base_url is None:
         raise ValueError("Base URL cannot be None")

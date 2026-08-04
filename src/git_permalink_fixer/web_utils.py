@@ -4,14 +4,14 @@ import json
 import os
 import sys
 import webbrowser
-from typing import List, Optional
+from typing import List
 
 import requests
 
 from git_permalink_fixer.url_utils import parse_github_blob_permalink
 
 
-def _get_github_token() -> Optional[str]:
+def _get_github_token() -> str | None:
     """
     Retrieves GitHub token from GITHUB_TOKEN env var or prompts user.
     Returns token string or None if not found/provided or if stdin is not a TTY.
@@ -39,7 +39,7 @@ def _get_github_token() -> Optional[str]:
     # Allow KeyboardInterrupt to propagate if user cancels.
 
 
-def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, token: str) -> Optional[List[str]]:
+def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, token: str) -> List[str] | None:
     """Helper to fetch content using GitHub API, trying raw then JSON endpoint."""
     api_url_base = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     headers = {"Authorization": f"token {token}"}
@@ -87,7 +87,7 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
         return None
 
 
-def fetch_raw_github_content_from_url(github_file_url: str) -> Optional[List[str]]:
+def fetch_raw_github_content_from_url(github_file_url: str) -> List[str] | None:
     """Fetches raw content from a GitHub file URL, with API fallback for 4xx errors."""
     parsed_details = parse_github_blob_permalink(github_file_url)
     if not parsed_details:

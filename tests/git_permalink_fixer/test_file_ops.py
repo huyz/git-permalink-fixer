@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from typing import List, Optional, Set, Callable, Tuple
+from typing import List, Set, Callable, Tuple
 from unittest.mock import patch, MagicMock, call
 import re
 
@@ -84,7 +84,7 @@ def test_should_skip_file_search(
     test_repo_root: Path,
     file_rel_path_str: str,
     create_as_dir: bool,
-    ignored_rel_paths_str: Optional[Set[str]],
+    ignored_rel_paths_str: Set[str] | None,
     expected_skip: bool,
     description: str,
 ):
@@ -97,7 +97,7 @@ def test_should_skip_file_search(
     else:
         file_path.touch(exist_ok=True)
 
-    ignored_paths_absolute: Optional[Set[Path]] = None
+    ignored_paths_absolute: Set[Path] | None = None
     if ignored_rel_paths_str is not None:
         ignored_paths_absolute = {test_repo_root / p for p in ignored_rel_paths_str}
         # Ensure ignored directories exist if they are parents for the check
@@ -303,9 +303,9 @@ def test_extract_permalinks_from_file(
     lines: List[str],
     git_owner: str,
     git_repo: str,
-    normalize_func_to_use: Optional[Callable],
+    normalize_func_to_use: Callable | None,
     initial_found_count: int,
-    mock_parse_side_effect: List[Optional[PermalinkInfo]],
+    mock_parse_side_effect: List[PermalinkInfo] | None,
     expected_permalinks_data: List[Tuple[str, str, str, int]],  # url, hash, path, line_num
     expected_found_count_after,
     description: str,

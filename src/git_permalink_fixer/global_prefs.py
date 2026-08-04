@@ -1,7 +1,7 @@
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from .text_utils import parse_tolerance_input
 
@@ -17,8 +17,8 @@ class GlobalPreferences:
     main_branch: str = "main"
     tag_prefix: str = "permalinks/ref"
     line_shift_tolerance_str: str = "20"
-    output_json_report_path: Optional[Path] = None
-    scan_path: Optional[Path] = None  # New: Path to start scanning from
+    output_json_report_path: Path | None = None
+    scan_path: Path | None = None  # New: Path to start scanning from
 
     # Derived attributes
     tolerance_is_percentage: bool = field(init=False)

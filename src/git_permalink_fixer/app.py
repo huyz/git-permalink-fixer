@@ -169,10 +169,10 @@ class PermalinkFixerApp:
             else:
                 # 2. Not skipped by fundamental rules. Now check .gitignore if respect_gitignore is
                 # active.
-                if self.global_prefs.respect_gitignore and ignored_paths_set:
+                if self.global_prefs.respect_gitignore and ignored_paths_set:  # noqa: SIM102
                     # Check if the file is covered by .gitignore rules by seeing if
                     # should_skip_file_search returns True when the gitignore set IS provided.
-                    if should_skip_file_search(file_path, self.repo_root, ignored_paths_set):
+                    if should_skip_file_search(file_path, self.repo_root, ignored_paths_set):  # noqa: SIM102
                         # Since skipped_by_fundamental_rules is False, this means it's skipped
                         # *solely* due to .gitignore
                         process_this_file = False
@@ -1338,7 +1338,7 @@ class PermalinkFixerApp:
         And ends by calling the function to push the tags to the remote 'origin'.
         """
         # commits_to_tag is now List[TagCreationOperation]
-        print(f"\n📌 Processing {len(set(c.commit_hash for c in commits_to_tag))} unique commit(s) for tagging")
+        print(f"\n📌 Processing {len({c.commit_hash for c in commits_to_tag})} unique commit(s) for tagging")
 
         # Deduplicate commits_to_tag by commit_hash, keeping the first encountered commit_info
         final_commits_to_tag_ops: List[TagCreationOperation] = []
@@ -1484,7 +1484,7 @@ class PermalinkFixerApp:
 
         num_permalinks = sum(len(c.permalinks) for c in examination_set.commits_to_examine.values())
         num_unique_files = len(
-            set(p.found_in_file for c in examination_set.commits_to_examine.values() for p in c.permalinks)
+            {p.found_in_file for c in examination_set.commits_to_examine.values() for p in c.permalinks}
         )
         self._vprint(
             f"\nFound {num_permalinks} GitHub permalinks in {num_unique_files} unique file(s) referencing {len(examination_set.commits_to_examine)} unique commit(s)"

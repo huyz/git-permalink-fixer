@@ -40,7 +40,7 @@ class OperationSet:
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(self.report_data, f, indent=2)
             print(f"\n📝 JSON report written to: {output_path}")
-        except IOError as e:
+        except OSError as e:
             print(
                 f"\n❌ Error writing JSON report to {output_path}: {e}",
                 file=sys.stderr,

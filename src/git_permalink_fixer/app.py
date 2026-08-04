@@ -199,7 +199,7 @@ class PermalinkFixerApp:
                             self._vprint(
                                 f"  🙈 git-ignored file with {len(permalinks_in_ignored_file)} permalink(s): {file_path.relative_to(self.repo_root)}"
                             )
-                    except (UnicodeDecodeError, IOError, OSError, PermissionError) as e_log:
+                    except (UnicodeDecodeError, OSError, PermissionError) as e_log:
                         self._vprint(
                             f"  ⚠️ Could not read git-ignored file {file_path.relative_to(self.repo_root)} for special logging: {e_log}"
                         )
@@ -221,7 +221,7 @@ class PermalinkFixerApp:
                 )
                 for pl in permalinks_in_file:
                     examination_set.add_permalink(pl)
-            except (UnicodeDecodeError, IOError, OSError, PermissionError) as e:
+            except (UnicodeDecodeError, OSError, PermissionError) as e:
                 print(f"Warning: Could not read {file_path}: {e}")
                 continue
 
@@ -1270,7 +1270,7 @@ class PermalinkFixerApp:
             print(
                 f"  ✅ Replaced permalink in {file_path.relative_to(self.repo_root)} at line {permalink.found_at_line}"
             )
-        except (IOError, OSError, UnicodeDecodeError, PermissionError) as e:
+        except (OSError, UnicodeDecodeError, PermissionError) as e:
             print(f"  ❌ Failed to replace permalink in {permalink.found_in_file.relative_to(self.repo_root)}: {e}")
 
     def _push_created_tags(self, operation_set: OperationSet) -> None:

@@ -260,7 +260,7 @@ class PermalinkFixerApp:
         target_url_path: str | None = None,
         target_url: str | None = None,
         custom_tolerance_str: str | None = None,  # Optional custom tolerance string (e.g., "5" or "10%")
-    ) -> tuple[bool, int | None, int] | None:
+    ) -> tuple[bool, int | None, int | None]:
         """
         Verifies if the content from the original permalink's specified lines exists in the target,
         allowing for line shifts. The target can be specified by a commit hash and file path,
@@ -432,7 +432,7 @@ class PermalinkFixerApp:
         original: PermalinkInfo,
         ancestor_commit: str | None,
         state: ResolutionState,
-    ) -> tuple[str, str, str] | None:
+    ) -> tuple[str, str, str | None]:
         """
         Evaluates the current candidate for permalink replacement.
         Returns: (status_code, problem_description, proposed_final_url_or_none)
@@ -762,7 +762,7 @@ class PermalinkFixerApp:
         repl_url: str | None,  # The fully formed candidate replacement URL
         is_commit_slated_for_tagging: bool,
         auto_action_directive_for_commit: str | None = None,  # From 'rc' or 'sc'
-    ) -> tuple[str, str] | None:
+    ) -> tuple[str, str | None]:
         """
         Prompts the user for the action (replace, tag, skip) for a permalink and handles remembering
         choices.
@@ -900,7 +900,7 @@ class PermalinkFixerApp:
         total: int,
         is_commit_slated_for_tagging: bool,
         auto_action_directive_for_commit: str | None = None,  # "replace" or "skip"
-    ) -> tuple[str, str] | None:  # Returns (action_str, final_repl_url_if_action_is_replace)
+    ) -> tuple[str, str | None]:  # Returns (action_str, final_repl_url_if_action_is_replace)
         """
         Process a permalink (for a given file, for a given commit), including verifying content match,
         prompting for replacement, and handling user actions.

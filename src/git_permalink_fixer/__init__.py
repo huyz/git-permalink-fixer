@@ -150,7 +150,7 @@ def main():
     except RuntimeError as e:  # Catch specific custom errors
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
-    except Exception as e:  # Catch other unexpected errors  # pylint: disable=broad-except
+    except Exception as e:  # Catch other unexpected errors  # pylint: disable=broad-except  # noqa: BLE001
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         import traceback  # pylint: disable=import-outside-toplevel
 

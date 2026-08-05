@@ -310,7 +310,7 @@ def test_extract_permalinks_from_file(
     git_repo: str,
     normalize_func_to_use: Callable | None,
     initial_found_count: int,
-    mock_parse_side_effect: list[PermalinkInfo | None],
+    mock_parse_side_effect: list[PermalinkInfo] | None,
     expected_permalinks_data: list[tuple[str, str, str, int]],  # url, hash, path, line_num
     expected_found_count_after,
     description: str,

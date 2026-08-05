@@ -18,7 +18,7 @@ def test_evaluate_candidate_external_needs_url(mock_file_exists, mock_verify, mo
         "current_le": 1,
         "custom_tolerance_str": None,
     }
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
+    status, _desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
     assert status == "needs_external_url"
     assert url is None
 
@@ -35,7 +35,7 @@ def test_evaluate_candidate_external_resolved_no_lines_original(mock_file_exists
         "current_le": None,
         "custom_tolerance_str": None,
     }
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
+    status, _desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
     assert status == "resolved"
     assert url == "https://ext.com/base#L10"
     mock_verify.assert_not_called()  # No verification if original has no lines
@@ -54,7 +54,7 @@ def test_evaluate_candidate_external_resolved_with_lines_match(mock_file_exists,
         "custom_tolerance_str": None,
     }
     mock_verify.return_value = (True, 5, 5)  # Match found
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
+    status, _desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, None, state)
     assert status == "resolved"
     assert url == "https://ext.com/base#L5"
     expected_verify_url = "https://ext.com/base#L5"
@@ -73,7 +73,7 @@ def test_evaluate_candidate_ancestor_path_cleared(mock_file_exists, mock_verify,
         "current_le": 1,
         "custom_tolerance_str": None,
     }
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
+    status, _desc, _url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "path_cleared"
 
 
@@ -89,7 +89,7 @@ def test_evaluate_candidate_ancestor_tree_link(mock_file_exists, mock_verify, mo
         "current_le": None,
         "custom_tolerance_str": None,
     }
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
+    status, _desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "resolved"
     assert (
         url
@@ -110,7 +110,7 @@ def test_evaluate_candidate_ancestor_path_missing(mock_file_exists, mock_verify,
         "custom_tolerance_str": None,
     }
     mock_file_exists.return_value = False  # Path does not exist in ancestor
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
+    status, _desc, _url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "path_missing_ancestor"
     mock_file_exists.assert_called_once_with("anc_hash", "new/path.py", repo_path=PosixPath("/fake/repo"))
 
@@ -129,7 +129,7 @@ def test_evaluate_candidate_ancestor_lines_mismatch(mock_file_exists, mock_verif
     }
     mock_file_exists.return_value = True
     mock_verify.return_value = (False, None, None)  # Content mismatch
-    status, desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
+    status, _desc, _url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "lines_mismatch_ancestor"
     mock_verify.assert_called_once_with(
         original, target_commit_hash="anc_hash", target_url_path="path.py", custom_tolerance_str="5"

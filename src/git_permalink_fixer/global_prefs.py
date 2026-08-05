@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +30,7 @@ class GlobalPreferences:
         self.repo_aliases = [alias.lower() for alias in self.repo_aliases]
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "GlobalPreferences":
+    def from_args(cls, args: argparse.Namespace) -> "GlobalPreferences":  # noqa: UP037
         return cls(
             verbose=args.verbose,
             dry_run=args.dry_run,

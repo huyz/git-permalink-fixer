@@ -1,7 +1,4 @@
-from typing import Tuple
-
-
-def parse_tolerance_input(tolerance_str: str) -> Tuple[bool, int]:
+def parse_tolerance_input(tolerance_str: str) -> tuple[bool, int]:
     """
     Parses the line shift tolerance string and validates it.
     Returns: (is_percentage, value)

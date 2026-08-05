@@ -96,7 +96,7 @@ def test_verify_content_match_custom_percentage_tolerance(mock_get_content, mock
     original = create_mock_permalink_info(line_start=1, url_path="file.py")
     # Target file has 10 lines, 10% tolerance = 1 line shift
     mock_get_content.side_effect = [["line1"], ["pad"] * 1 + ["line1"] + ["pad"] * 8]
-    match, ls, le = mock_app_for_resolution._verify_content_match(
+    match, ls, _le = mock_app_for_resolution._verify_content_match(
         original, target_commit_hash="target_hash", target_url_path="file.py", custom_tolerance_str="10%"
     )
     assert match is True
@@ -108,7 +108,7 @@ def test_verify_content_match_custom_percentage_tolerance_not_found(mock_get_con
     original = create_mock_permalink_info(line_start=1, url_path="file.py")
     # Target file has 10 lines, 10% tolerance = 1 line shift
     mock_get_content.side_effect = [["line1"], ["pad"] * 1 + ["line1"] + ["pad"] * 8]
-    match, ls, le = mock_app_for_resolution._verify_content_match(
+    match, ls, _le = mock_app_for_resolution._verify_content_match(
         original, target_commit_hash="target_hash", target_url_path="file.py", custom_tolerance_str="9%"
     )
     assert match is False

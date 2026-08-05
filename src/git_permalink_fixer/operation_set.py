@@ -2,7 +2,6 @@ import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict
 
 from .permalink_info import PermalinkInfo
 
@@ -16,7 +15,7 @@ class PermalinkReplacementOperation:
 @dataclass
 class TagCreationOperation:
     commit_hash: str
-    commit_info: Dict[str, str]
+    commit_info: dict[str, str]
     # tag_name and tag_message will be generated later if not provided
     tag_name: str | None = None
     tag_message: str | None = None
@@ -24,9 +23,9 @@ class TagCreationOperation:
 
 @dataclass
 class OperationSet:
-    replacements: List[PermalinkReplacementOperation] = field(default_factory=list)
-    tags_to_create: List[TagCreationOperation] = field(default_factory=list)
-    report_data: Dict[str, List] = field(default_factory=lambda: {"replacements": [], "tags_created": []})
+    replacements: list[PermalinkReplacementOperation] = field(default_factory=list)
+    tags_to_create: list[TagCreationOperation] = field(default_factory=list)
+    report_data: dict[str, list] = field(default_factory=lambda: {"replacements": [], "tags_created": []})
 
     def write_json_report(self, output_path: Path | None) -> None:
         """Writes the collected report data to a JSON file if a path is specified."""

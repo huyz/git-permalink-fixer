@@ -1,19 +1,24 @@
-import pytest
-from pathlib import Path
-from typing import List, Set, Callable, Tuple
-from unittest.mock import patch, MagicMock, call
 import re
+from collections.abc import Callable
+from pathlib import Path
+from unittest.mock import MagicMock, call, patch
 
-from git_permalink_fixer.file_ops import (
-    should_skip_file_search,
-    extract_permalinks_from_file,
-)
-from git_permalink_fixer.permalink_info import PermalinkInfo
+import pytest
+
 from git_permalink_fixer.constants import (
     COMMON_EXTENSIONLESS_REPO_FILES as DEFAULT_COMMON_EXTENSIONLESS,
+)
+from git_permalink_fixer.constants import (
     COMMON_TEXT_FILE_EXTENSIONS as DEFAULT_COMMON_TEXT_EXTENSIONS,
+)
+from git_permalink_fixer.constants import (
     GITHUB_URL_FIND_PATTERN,
 )
+from git_permalink_fixer.file_ops import (
+    extract_permalinks_from_file,
+    should_skip_file_search,
+)
+from git_permalink_fixer.permalink_info import PermalinkInfo
 
 REPO_ROOT_STR = "/test/repo"
 
@@ -84,7 +89,7 @@ def test_should_skip_file_search(
     test_repo_root: Path,
     file_rel_path_str: str,
     create_as_dir: bool,
-    ignored_rel_paths_str: Set[str] | None,
+    ignored_rel_paths_str: set[str] | None,
     expected_skip: bool,
     description: str,
 ):
@@ -97,7 +102,7 @@ def test_should_skip_file_search(
     else:
         file_path.touch(exist_ok=True)
 
-    ignored_paths_absolute: Set[Path] | None = None
+    ignored_paths_absolute: set[Path] | None = None
     if ignored_rel_paths_str is not None:
         ignored_paths_absolute = {test_repo_root / p for p in ignored_rel_paths_str}
         # Ensure ignored directories exist if they are parents for the check
@@ -300,13 +305,13 @@ def dummy_normalize_repo_name_func(repo_name: str) -> str:
 def test_extract_permalinks_from_file(
     mock_parse_github_permalink: MagicMock,
     test_repo_root: Path,  # Use the fixture
-    lines: List[str],
+    lines: list[str],
     git_owner: str,
     git_repo: str,
     normalize_func_to_use: Callable | None,
     initial_found_count: int,
-    mock_parse_side_effect: List[PermalinkInfo] | None,
-    expected_permalinks_data: List[Tuple[str, str, str, int]],  # url, hash, path, line_num
+    mock_parse_side_effect: list[PermalinkInfo] | None,
+    expected_permalinks_data: list[tuple[str, str, str, int]],  # url, hash, path, line_num
     expected_found_count_after,
     description: str,
 ):

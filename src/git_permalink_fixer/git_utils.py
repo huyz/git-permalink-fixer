@@ -1,8 +1,8 @@
-import subprocess
-from pathlib import Path
-from typing import List, Dict, Set, Tuple, Callable
 import re
+import subprocess
 import sys
+from collections.abc import Callable
+from pathlib import Path
 
 from .constants import GITHUB_REMOTE_RE
 
@@ -73,7 +73,7 @@ def get_remote_url(repo_path: Path) -> str:
         raise RuntimeError("Failed to get remote URL for 'origin'.") from e
 
 
-def load_ignored_paths(repo_root: Path) -> Set[Path]:
+def load_ignored_paths(repo_root: Path) -> set[Path]:
     """
     Loads all git-ignored files and directories using 'git status --porcelain=v1 --ignored'.
     Returns a set of absolute Paths.
@@ -106,7 +106,7 @@ def load_ignored_paths(repo_root: Path) -> Set[Path]:
     return ignored_set
 
 
-def get_github_info_from_url(remote_url: str) -> Tuple[str, str]:
+def get_github_info_from_url(remote_url: str) -> tuple[str, str]:
     """Extract owner/repo from a GitHub remote URL."""
     patterns = [
         # Handles common SSH and HTTPS URLs, including those ending with .git or a slash
@@ -144,7 +144,7 @@ def is_commit_in_main(commit_hash: str, main_branch: str, repo_path: Path) -> bo
         return False
 
 
-def get_file_content_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> List[str] | None:
+def get_file_content_at_commit(commit_hash: str, url_path: str, repo_path: Path) -> list[str] | None:
     """Get file content at a specific commit from the specified repository."""
     try:
         result = subprocess.run(
@@ -287,7 +287,7 @@ def fetch_commit_missing_locally(commit_hash: str, vprint_func: Callable, repo_p
         return False
 
 
-def get_commit_info(commit_hash: str, repo_path: Path) -> Dict[str, str] | None:
+def get_commit_info(commit_hash: str, repo_path: Path) -> dict[str, str] | None:
     """Get commit information from the specified repository."""
     try:
         result = subprocess.run(

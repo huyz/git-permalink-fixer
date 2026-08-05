@@ -1,4 +1,5 @@
 import pytest
+
 from git_permalink_fixer.text_utils import parse_tolerance_input
 
 

@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
 
 from .text_utils import parse_tolerance_input
 
@@ -13,7 +14,7 @@ class GlobalPreferences:
     verbose: bool = False
     dry_run: bool = False
     respect_gitignore: bool = True
-    repo_aliases: List[str] = field(default_factory=list)
+    repo_aliases: list[str] = field(default_factory=list)
     main_branch: str = "main"
     tag_prefix: str = "permalinks/ref"
     line_shift_tolerance_str: str = "20"
@@ -29,7 +30,7 @@ class GlobalPreferences:
         self.repo_aliases = [alias.lower() for alias in self.repo_aliases]
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "GlobalPreferences":
+    def from_args(cls, args: argparse.Namespace) -> "GlobalPreferences":  # noqa: UP037
         return cls(
             verbose=args.verbose,
             dry_run=args.dry_run,

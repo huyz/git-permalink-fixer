@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import List, Tuple, Set, Callable
-import re
 import logging
-from .permalink_info import PermalinkInfo
+import re
+from collections.abc import Callable
+from pathlib import Path
+
 from .constants import (
     COMMON_EXTENSIONLESS_REPO_FILES,
     COMMON_TEXT_FILE_EXTENSIONS,
     GITHUB_URL_FIND_PATTERN,
 )
+from .permalink_info import PermalinkInfo
 from .url_utils import parse_github_permalink_for_this_repo
 
 logger = logging.getLogger(__name__)
 
 
-def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: Set[Path] | None = None) -> bool:
+def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: set[Path] | None = None) -> bool:
     """Helper to determine if a file should be skipped during permalink search.
 
     Note that calling `file` would be too slow, so we use a heuristic.
@@ -53,17 +54,17 @@ def should_skip_file_search(file_path: Path, repo_root: Path, ignored_paths: Set
 
 def extract_permalinks_from_file(
     file_path: Path,
-    lines: List[str],
+    lines: list[str],
     repo_root: Path,
     git_owner: str,
     git_repo: str,
     current_global_found_count: int,
     normalize_repo_name_func: Callable | None = None,
-) -> Tuple[List[PermalinkInfo], int]:
+) -> tuple[list[PermalinkInfo], int]:
     """Helper to extract permalinks from the lines of a single file.
     Returns (permalinks_in_file, new_global_found_count)
     """
-    permalinks_in_file: List[PermalinkInfo] = []
+    permalinks_in_file: list[PermalinkInfo] = []
     file_header_printed = False
     for line_num, line_content in enumerate(lines, 1):
         urls_in_line = re.findall(GITHUB_URL_FIND_PATTERN, line_content)

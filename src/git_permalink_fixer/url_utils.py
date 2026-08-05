@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Tuple, Callable
 
 from .constants import GITHUB_PERMALINK_RE
 from .permalink_info import PermalinkInfo
 
 
-def parse_github_blob_permalink(url: str) -> Tuple[str, str, str, str, int | None, int | None] | None:
+def parse_github_blob_permalink(url: str) -> tuple[str, str, str, str, int | None, int | None] | None:
     """
     Parses any GitHub file URL (blob view) to extract owner, repo, ref (commit/branch),
     path, and line numbers.

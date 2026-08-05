@@ -2,6 +2,7 @@ from pathlib import PosixPath
 from unittest.mock import patch
 
 from git_permalink_fixer.app import ResolutionState
+
 from .conftest import create_mock_permalink_info
 
 
@@ -128,7 +129,7 @@ def test_evaluate_candidate_ancestor_lines_mismatch(mock_file_exists, mock_verif
     }
     mock_file_exists.return_value = True
     mock_verify.return_value = (False, None, None)  # Content mismatch
-    status, _desc, url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
+    status, _desc, _url = mock_app_for_resolution._evaluate_current_resolution_candidate(original, "anc_hash", state)
     assert status == "lines_mismatch_ancestor"
     mock_verify.assert_called_once_with(
         original, target_commit_hash="anc_hash", target_url_path="path.py", custom_tolerance_str="5"

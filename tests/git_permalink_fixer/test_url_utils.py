@@ -1,13 +1,13 @@
-import pytest
-from typing import Tuple
 from pathlib import Path
 
+import pytest
+
+from git_permalink_fixer.permalink_info import PermalinkInfo
 from git_permalink_fixer.url_utils import (
     parse_github_blob_permalink,
     parse_github_permalink_for_this_repo,
     update_github_url_with_line_numbers,
 )
-from git_permalink_fixer.permalink_info import PermalinkInfo
 
 
 @pytest.mark.parametrize(
@@ -69,7 +69,7 @@ from git_permalink_fixer.permalink_info import PermalinkInfo
 )
 def test_parse_github_blob_permalink(
     url: str,
-    expected_output: Tuple[str, str, str, str, int | None, int] | None,
+    expected_output: tuple[str, str, str, str, int | None, int] | None,
 ):
     """Tests parse_github_blob_permalink with various inputs."""
     assert parse_github_blob_permalink(url) == expected_output

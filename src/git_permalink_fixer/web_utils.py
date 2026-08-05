@@ -4,7 +4,6 @@ import json
 import os
 import sys
 import webbrowser
-from typing import List
 
 import requests
 
@@ -39,7 +38,7 @@ def _get_github_token() -> str | None:
     # Allow KeyboardInterrupt to propagate if user cancels.
 
 
-def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, token: str) -> List[str] | None:
+def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, token: str) -> list[str] | None:
     """Helper to fetch content using GitHub API, trying raw then JSON endpoint."""
     api_url_base = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
     headers = {"Authorization": f"token {token}"}
@@ -71,7 +70,7 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
                 temp_file.write(decoded_content)
 
             return decoded_content.splitlines()
-        if "download_url" in data and data["download_url"]:
+        if data.get("download_url"):
             response_download = requests.get(
                 data["download_url"], headers=headers, timeout=20
             )  # Use token for download_url
@@ -87,7 +86,7 @@ def _fetch_github_content_with_api(owner: str, repo: str, ref: str, path: str, t
         return None
 
 
-def fetch_raw_github_content_from_url(github_file_url: str) -> List[str] | None:
+def fetch_raw_github_content_from_url(github_file_url: str) -> list[str] | None:
     """Fetches raw content from a GitHub file URL, with API fallback for 4xx errors."""
     parsed_details = parse_github_blob_permalink(github_file_url)
     if not parsed_details:
@@ -125,7 +124,7 @@ def fetch_raw_github_content_from_url(github_file_url: str) -> List[str] | None:
         return None
 
 
-def open_urls_in_browser(urls_with_descriptions: List[tuple[str, str]]) -> None:
+def open_urls_in_browser(urls_with_descriptions: list[tuple[str, str]]) -> None:
     """
     Attempts to open a list of URLs in a web browser, each with a description.
 

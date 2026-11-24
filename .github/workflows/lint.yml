@@ -55,7 +55,7 @@ jobs:
       - name: Check for changes in relevant files
         id: changes
         if: env.changed_all != 'true'
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         with:
           filters: .github/paths-filter.yml
 
@@ -69,7 +69,7 @@ jobs:
       - name: Get listing of changed GitHub Action files
         id: action-files
         if: env.changed_all != 'true' && steps.changes.outputs.github_actions == 'true'
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         with:
           # Enable listing of files matching each filter.
           # Paths to files will be available in `${FILTER_NAME}_files` output variable.

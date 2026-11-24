@@ -30,18 +30,18 @@ jobs:
         run: echo "changed_all=true" >> "$GITHUB_ENV"
 
       - name: Checkout code, including .github/paths-filter.yml
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
 
       - name: Set up Python 3.x
         id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11.5'   # avoid warning in logs
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
         with:
           enable-cache: true
 
@@ -55,7 +55,7 @@ jobs:
       - name: Check for changes in relevant files
         id: changes
         if: env.changed_all != 'true'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         with:
           filters: .github/paths-filter.yml
 
@@ -69,7 +69,7 @@ jobs:
       - name: Get listing of changed GitHub Action files
         id: action-files
         if: env.changed_all != 'true' && steps.changes.outputs.github_actions == 'true'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         with:
           # Enable listing of files matching each filter.
           # Paths to files will be available in `${FILTER_NAME}_files` output variable.

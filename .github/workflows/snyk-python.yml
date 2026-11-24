@@ -45,12 +45,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
 
       - name: Run Snyk to check configuration files for security issues
-        uses: snyk/actions/python@master
+        uses: snyk/actions/python@11b673cfb4b0dc0d860a1323caa199d54950dcce # master
         # Snyk can be used to break the build when it detects security issues.
         # In this case we want to upload the issues to GitHub Code Scanning
         continue-on-error: true
@@ -59,6 +59,6 @@ jobs:
           args: --sarif-file-output=snyk.sarif
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@d2aacf54c2fbc910db8d7ec338fdb54ea48c692d # v3
         with:
           sarif_file: snyk.sarif

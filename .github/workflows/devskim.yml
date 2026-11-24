@@ -36,6 +36,6 @@ jobs:
           exclude-rules: "DS176209"
 
       - name: Upload DevSkim scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@d2aacf54c2fbc910db8d7ec338fdb54ea48c692d # v3
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4
         with:
           sarif_file: devskim-results.sarif

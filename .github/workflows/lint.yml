@@ -21,7 +21,7 @@ env:
 jobs:
   lint:
     # 2026-11-23 Can't use ubuntu-latest as 26.04 doesn't have Python 3.11
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       # TODO: is there an easier way to do this?

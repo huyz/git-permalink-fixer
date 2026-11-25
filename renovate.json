@@ -7,6 +7,16 @@
     {
       "matchPackageNames": ["python", "actions/python-versions"],
       "allowedVersions": "<3.12.0"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchDatasources": ["github-runners"],
+      "matchPackageNames": ["ubuntu"],
+      "matchFileNames": [
+        ".github/workflows/bandit.yml",
+        ".github/workflows/lint.yml"
+      ],
+      "allowedVersions": "/^24\\.04$/"
     }
   ]
 }
